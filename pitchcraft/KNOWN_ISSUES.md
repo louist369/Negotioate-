@@ -6,20 +6,19 @@ Recorded honestly. Ordered by how much each affects the experience.
 
 ## Significant
 
-### 1. Characters do not deform — the rig is a jointed mannequin
-Players are built from rigid tapered segments with spheres at the joints
-(`src/render/character.js`). The kit now has a sleeve break, a sock line, a
-collar and hem, fabric roughness and a shaped boot, which carries it a long way
-at gameplay distance — but in close-up the limbs are still separate solids
-rather than a continuous body.
+### 1. Faces and hands are approximations
+Players are a continuous skinned mesh now, so limbs deform and joints bend as one
+surface. What is left is smaller but still visible up close: the face is painted
+into a texture rather than modelled, hands are rounded stubs with no fingers, and
+hair is a single scalp cap with no strands. Kit fabric does not fold or flap.
 
-This is the largest remaining gap between Pitchcraft and a commercial football
-game's visuals, and it is the one place where buying an asset would genuinely
-beat generating one.
+None of it shows at the distance the broadcast camera actually sits at, and the
+close-up inspection harness (`npm run closeup`) points a camera nearer than
+gameplay ever gets.
 
-**Fix:** replace with a `SkinnedMesh` and a real bone hierarchy. The animation
-layer already drives named joints, so `animation.js` would need almost no
-change — the work is authoring the mesh and skin weights.
+**Fix:** this is the one area where buying art would beat generating it. A rigged
+humanoid with a modelled head would drop into the existing skeleton — the bone
+names are the contract, and `animation.js` binds to those, not to geometry.
 
 ### 2. 60 fps is unverified on real hardware
 This build has only ever run on a software rasteriser (no GPU in the build

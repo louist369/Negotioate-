@@ -389,12 +389,19 @@ export function makeShirtTexture(renderer, colors, { keeper = false, size = 256 
   ctx.fillRect(0, 0, size, size);
 
   if (!keeper) {
-    // Two body stripes, offset from centre so the front reads asymmetrically —
+    // Body stripes, offset from centre so the front reads asymmetrically —
     // symmetric stripes look like a test pattern from the broadcast camera.
-    ctx.fillStyle = dark;
-    ctx.globalAlpha = 0.55;
-    for (const u of [0.13, 0.31, 0.69, 0.87]) {
-      ctx.fillRect(Math.round(u * size), 0, Math.max(2, size * 0.035), size);
+    // These were at 0.55 alpha in the secondary colour, which against the
+    // primary is almost no contrast at all: on the skinned mesh the shirt read
+    // as one flat block. A paired dark stripe with a thin accent pinstripe
+    // beside it is legible at any distance the camera actually reaches.
+    for (const u of [0.14, 0.7]) {
+      ctx.fillStyle = dark;
+      ctx.globalAlpha = 0.9;
+      ctx.fillRect(Math.round(u * size), 0, Math.max(3, size * 0.055), size);
+      ctx.fillStyle = trim;
+      ctx.globalAlpha = 0.85;
+      ctx.fillRect(Math.round((u + 0.062) * size), 0, Math.max(2, size * 0.016), size);
     }
     ctx.globalAlpha = 1;
   }
@@ -497,4 +504,75 @@ export function makeRadialTexture(inner = 'rgba(0,0,0,0.55)', outer = 'rgba(0,0,
   const tex = new THREE.CanvasTexture(c);
   tex.needsUpdate = true;
   return tex;
+}
+
+/**
+ * Head map: eyes, brows and a hairline, drawn white-on-skin so the material's
+ * own colour still carries the player's skin tone (one texture serves every
+ * skin in the squad).
+ *
+ * U runs around the head starting at +X, so the front of the body (+Z) sits at
+ * U = 0.25 — that is where the face goes. V runs from the neck (0) to the crown
+ * (1); the skull occupies roughly the top three-quarters.
+ */
+export function makeHeadTexture(renderer, size = 256) {
+  const c = canvas(size, size);
+  const ctx = c.getContext('2d');
+
+  // White base: the material colour multiplies through it.
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, size, size);
+
+  const faceU = 0.25 * size;
+  const px = (u) => faceU + u * size;
+
+  // Slight shading under the jaw and around the temples so the head is not a
+  // uniformly lit egg.
+  const shade = ctx.createLinearGradient(0, size * 0.34, 0, size * 0.52);
+  shade.addColorStop(0, 'rgba(120,96,80,0.45)');
+  shade.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = shade;
+  ctx.fillRect(0, size * 0.34, size, size * 0.2);
+
+  // Eyes. Two dark ovals with a brow above each, at the height a brow sits on a
+  // skull — a little above the vertical middle of the head section.
+  const eyeY = size * 0.63;
+  for (const dx of [-0.055, 0.055]) {
+    ctx.fillStyle = '#f4f1ec';
+    ctx.beginPath();
+    ctx.ellipse(px(dx), eyeY, size * 0.024, size * 0.015, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#2b1f18';
+    ctx.beginPath();
+    ctx.ellipse(px(dx), eyeY, size * 0.012, size * 0.013, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Brow.
+    ctx.strokeStyle = 'rgba(60,42,30,0.75)';
+    ctx.lineWidth = size * 0.016;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(px(dx - 0.032), eyeY - size * 0.042);
+    ctx.lineTo(px(dx + 0.03), eyeY - size * 0.05);
+    ctx.stroke();
+  }
+
+  // Mouth: a soft line, not a grin.
+  ctx.strokeStyle = 'rgba(120,72,64,0.6)';
+  ctx.lineWidth = size * 0.012;
+  ctx.beginPath();
+  ctx.moveTo(px(-0.03), size * 0.5);
+  ctx.lineTo(px(0.03), size * 0.5);
+  ctx.stroke();
+
+  // No hairline is painted here: the hair mesh covers the crown, and drawing
+  // one as well stacked two dark masses on top of each other and turned the
+  // head into a helmet. Just a soft shadow where the scalp meets the brow.
+  const brow = ctx.createLinearGradient(0, size * 0.78, 0, size * 0.86);
+  brow.addColorStop(0, 'rgba(255,255,255,0)');
+  brow.addColorStop(1, 'rgba(150,124,102,0.5)');
+  ctx.fillStyle = brow;
+  ctx.fillRect(0, size * 0.78, size, size * 0.1);
+
+  return finish(c, { renderer, aniso: 4 });
 }

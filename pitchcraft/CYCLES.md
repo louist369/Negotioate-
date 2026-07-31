@@ -431,3 +431,119 @@ and discovering that the shadows had been rendering correctly all along.
 The most useful single tool built this round was `tools/sweep.js`, after two
 successive balance decisions were made on 14-match samples whose noise was
 larger than the effect being measured.
+
+---
+
+# Round three: the players
+
+One more play-test line: *"the players themselves look too beta."* Correct
+again, and this time it was the thing every previous round had explicitly
+deferred.
+
+## 31. The rig was the problem, and it did not need an asset
+
+**Found:** players were a rigid-segment rig — tapered cylinders with a sphere at
+every joint. It never came apart, but a knee was two overlapping tubes with a
+ball between them, not a bending surface. This had been the top entry in
+`KNOWN_ISSUES.md` since the project started, on the stated grounds that a
+skinned mesh needs hand-authored weights and a rigged humanoid to license.
+
+That reasoning was wrong. For a body this stylised, weights that are a smooth
+function of distance along a bone chain are both easier to reason about and more
+predictable than painted ones, and they are about eighty lines of code.
+
+**Fixed:** `src/render/character.js` is now a procedurally-generated
+`SkinnedMesh` over an 18-bone skeleton. The body is described as cross-section
+rings in bind space — position, elliptical radius, two bone influences, material
+slot — swept into tubes. Skin weights blend across a band spanning each joint,
+reaching an even split exactly at the joint and mirroring on the far side.
+
+The bones carry the names the old rig's joint Groups did, so `animation.js` was
+not touched. It still writes a rotation into `joints.legL.knee`; that rotation
+now deforms a surface. Draw calls went *down* — seven material groups in one
+geometry against sixteen separate meshes.
+
+## 32. Four passes on proportion, judged from renders
+
+Each of these was a render, a look, and a specific correction:
+
+1. **Legs read as stilts.** Thighs too thin and shorts ending at the hip.
+   Quadriceps mass up, shorts down to just above the knee, sock line raised.
+2. **The head was sunk into the chest.** The torso capped to a *point* at neck
+   height and the head sat on the resulting cone. The chest now tapers through a
+   trapezius into an actual neck radius and the head section continues straight
+   out of it — one surface, no cap. The shoulder joint also moved down from 94%
+   to 84% of torso height, which is where a real shoulder is relative to C7.
+3. **Sleeves came out black.** The sleeve's V was mapped entirely inside the
+   shirt texture's dark yoke band. Remapped to start below it, so a sleeve is
+   team colour with the accent trim at the cuff.
+4. **The shirt was one flat block.** Stripes were drawn in the secondary colour
+   at 0.55 alpha — against the primary, almost no contrast at all. Now a paired
+   dark stripe with a thin accent pinstripe beside it.
+
+## 33. A face, and then half of it removed again
+
+Added a head map — eyes, brows, mouth — drawn white-on-skin so the material's own
+colour still carries each player's skin tone, and one texture serves the whole
+squad. Needed its own material slot: the head shares a skin tone with the arms
+and legs but must not share their untextured material.
+
+**Immediately wrong:** the head became a dark helmet. The map painted a hairline
+*and* the hair mesh covered the crown — two dark masses stacked. The hair shell
+was also wider than the skull it sat on. Hair pulled back to a scalp cap at
+1.035× the head radius, painted hairline removed.
+
+## 34. Celebrating players were leaving the stadium
+
+**Found by the audit, not by looking:** 57 `player-out-of-world` anomalies over
+12 matches. `stepGoal()` steps players directly rather than through
+`world.step()`, so it skipped the world constraints entirely — and a celebrating
+scorer runs in a straight line for three and a half seconds. Players were
+reaching 11m beyond the goal line, inside the stand. Now zero.
+
+## 35. The F3 overlay was lying
+
+**Found:** the performance overlay reported "1 draw, 0k tris". `renderer.info`
+resets on every `render()` call, and the composer makes several per frame — the
+last of which is a single fullscreen quad. Since the whole point of that overlay
+is to get a number back from a real GPU, a wrong one is worse than none.
+
+**Fixed:** `info.autoReset = false` with a manual reset once per frame. Now
+reports 239 draws / 34k triangles at the `low` tier.
+
+## 36. Shadows were off on exactly the hardware that needed them
+
+**Found:** shadows were disabled at the `low` quality tier — which is what phones
+fall back to. With the ambient fill cut back in cycle 26, a shadowless render
+looks *worse* than the old over-lit one, not cheaper: there is nothing left
+explaining where the light comes from.
+
+**Fixed:** shadows at every tier, with the saving taken in map resolution
+(1024/1024/2048) and filter cost (`BasicShadowMap` vs `PCFSoftShadowMap`).
+
+## 37. A leak check that could not tell lazy init from a leak
+
+**Found:** the skinned mesh added a bounded 2-geometry delta over restarts, and
+`leakcheck.js` failed on it. Measuring at 10 and again at 25 restarts gave the
+same delta of 2 — a one-time lazy allocation, not a leak.
+
+The tool already carried a hardcoded "one texture is allowed" allowance for
+exactly this situation, which is a guess dressed as a threshold.
+
+**Fixed:** the check now runs *two equal batches* of restarts and asserts only
+that the second one adds nothing. Whatever initialises lazily has already done
+so by the end of batch one, so a real leak is exactly "batch two also grew".
+No allowances, and strictly stronger than what it replaced.
+
+---
+
+## What round three was worth
+
+The headline change was one the project had been talking itself out of since the
+first cycle, on a technical premise that turned out to be false. Everything after
+it was iteration against renders — four passes on proportion, one on the face,
+each fixing something a screenshot made obvious and no test could see.
+
+The two defects found by instrumentation rather than by looking (celebrating
+players leaving the stadium, and an overlay reporting one draw call) were both
+invisible in every screenshot taken this round.

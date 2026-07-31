@@ -300,6 +300,12 @@ export class GameScene {
   }
 
   render() {
+    // `renderer.info` resets on every render() call, and the composer makes
+    // several per frame — the last of which is a single fullscreen quad. Left
+    // alone the F3 overlay reports "1 draw, 0k tris" for the whole scene.
+    // Reset once per frame instead and let the counters accumulate.
+    this.renderer.info.autoReset = false;
+    this.renderer.info.reset();
     if (this.post) {
       this.post.setCamera(this.cameraRig.camera);
       this.post.render();

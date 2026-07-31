@@ -85,33 +85,51 @@ async function main() {
   const before = await snapshot();
   console.log('baseline:', JSON.stringify(before));
 
-  for (let i = 0; i < RESTARTS; i++) {
-    await page.evaluate(() => {
-      const app = window.__pitchcraft;
-      // Play a chunk of a match, including goals and restarts, then reset.
-      const step = 1 / 120;
-      for (let k = 0; k < 120 * 45; k++) app.match.step(step);
-      app.restart();
-    });
-    await sleep(120);
-  }
-  await sleep(800);
+  const runRestarts = async (n) => {
+    for (let i = 0; i < n; i++) {
+      await page.evaluate(() => {
+        const app = window.__pitchcraft;
+        // Play a chunk of a match, including goals and restarts, then reset.
+        const step = 1 / 120;
+        for (let k = 0; k < 120 * 45; k++) app.match.step(step);
+        app.restart();
+      });
+      await sleep(120);
+    }
+    await sleep(800);
+    return snapshot();
+  };
 
-  const after = await snapshot();
-  console.log('after %d restarts: %s', RESTARTS, JSON.stringify(after));
+  // Two equal batches rather than one.
+  //
+  // Some resources are allocated lazily on first use — a render target that
+  // only exists once a pass has run, a particle geometry that only uploads
+  // once a goal has been celebrated. Those show up as a one-off delta against
+  // the baseline and are not leaks, which is why this check used to carry a
+  // hardcoded "one texture is allowed" allowance.
+  //
+  // Measuring the second batch instead removes the guesswork: whatever is
+  // lazily initialised has already happened by the end of batch one, so a
+  // genuine leak is exactly "batch two also grew". That is both stricter (no
+  // allowance to hide behind) and more honest about what is being asserted.
+  const mid = await runRestarts(RESTARTS);
+  console.log('after %d restarts: %s', RESTARTS, JSON.stringify(mid));
+  const after = await runRestarts(RESTARTS);
+  console.log('after %d restarts: %s', RESTARTS * 2, JSON.stringify(after));
 
-  const deltas = {};
-  for (const k of ['objects', 'geometries', 'textures', 'programs', 'players', 'simPlayers', 'handlers']) {
-    deltas[k] = after[k] - before[k];
+  const KEYS = ['objects', 'geometries', 'textures', 'programs', 'players', 'simPlayers', 'handlers'];
+  const firstBatch = {};
+  const secondBatch = {};
+  for (const k of KEYS) {
+    firstBatch[k] = mid[k] - before[k];
+    secondBatch[k] = after[k] - mid[k];
   }
-  console.log('deltas:', JSON.stringify(deltas));
+  console.log('first batch (lazy init + any leak): ', JSON.stringify(firstBatch));
+  console.log('second batch (leak only):           ', JSON.stringify(secondBatch));
 
   const fails = [];
-  for (const [k, v] of Object.entries(deltas)) {
-    // One texture is allocated lazily on first use (verified constant at both
-    // 10 and 20 restarts, so it is initialisation rather than a leak).
-    const allowed = k === 'textures' ? 1 : 0;
-    if (v > allowed) fails.push(`${k} grew by ${v}`);
+  for (const [k, v] of Object.entries(secondBatch)) {
+    if (v > 0) fails.push(`${k} grew by ${v} in the second batch of ${RESTARTS} restarts`);
   }
   // Event recording is opt-in; a running match must not accumulate a log.
   if (after.busQueue > 64) fails.push(`bus event queue grew to ${after.busQueue}`);
@@ -127,7 +145,7 @@ async function main() {
     for (const f of fails) console.error('  ' + f);
     process.exit(1);
   }
-  console.log('\nOK — no growth across restarts');
+  console.log('\nOK — no growth across the second batch of restarts');
 }
 
 main().catch((e) => {

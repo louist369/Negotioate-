@@ -94,20 +94,46 @@ are translucent bands laid over it so they stay seamless at any pitch size.
 
 ---
 
-## 7. Characters are a rigid-segment rig, not a skinned mesh
+## 7. Characters are a procedurally-generated skinned mesh
 
-Each player is a jointed mannequin: tapered limb segments with spheres at every
-joint so nothing visibly separates when limbs rotate. All 14 players share one
-set of geometries; only materials differ.
+Each player is a single continuous `SkinnedMesh` over an 18-bone skeleton. The
+mesh, the skeleton and the skin weights are all generated at runtime from the
+same `DIM` table the geometry has always used, so there is still no art asset in
+the build and no rigged humanoid to license.
 
-**Why:** no rigged humanoid asset was available, and a skinned mesh with
-hand-authored weights is a large amount of work for this slice. Joint spheres
-give an acceptable stylised silhouette at gameplay distance.
+The body is described as a list of cross-section rings in bind space — position,
+elliptical radius, up to two bone influences, and a material slot — which a
+`lathe()` helper sweeps into tubes. Skin weights blend across a band spanning
+each joint, reaching an even split exactly at the joint and mirroring on the far
+side. That band is the whole point: it is what makes a bent knee one continuous
+surface instead of two pieces pivoting.
 
-**Cost, stated plainly:** limbs do not deform. Under close inspection the rig
-reads as a mannequin rather than a person. This is the largest single gap between
-this and a commercial football game's visuals, and it is recorded as the top
-entry in `KNOWN_ISSUES.md`.
+**What this replaced:** a rigid-segment rig — tapered limb segments with spheres
+at every joint so nothing visibly separated when limbs rotated. It was cheap and
+it held together, but every limb was a separate solid and a knee was two
+overlapping tubes with a ball between them. At broadcast distance it passed;
+anywhere closer it read as a mannequin, which is exactly what it was. That was
+the top entry in `KNOWN_ISSUES.md` for the life of the project, and a play-tester
+named it unprompted.
+
+**Why it did not need an asset:** the reason originally given for the mannequin
+was that a skinned mesh needs hand-authored weights. It does not, for a body this
+stylised — weights that are a smooth function of distance along a bone chain are
+both easier to reason about and more predictable than painted ones, and they are
+about eighty lines of code.
+
+**What made it a drop-in:** the bones are named exactly as the old rig's joint
+Groups were, so `animation.js` was not touched by this change. It still writes a
+rotation into `joints.legL.knee`; that rotation now deforms a surface instead of
+moving a solid.
+
+**Cost:** roughly 2.4k triangles a player against the old rig's ~1.6k, and one
+skeleton each. Draw calls went *down* — seven material groups in one geometry
+against sixteen separate meshes.
+
+**What is still missing:** the face is a texture, not geometry. Fingers, hair
+strands and kit folds do not exist. Those are the things that would need bought
+art; the body no longer is.
 
 ---
 

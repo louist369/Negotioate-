@@ -141,7 +141,7 @@ function buildStands(renderer, outerX, outerZ) {
       map: tex,
       emissiveMap: tex,
       emissive: 0xffffff,
-      emissiveIntensity: 0.5,
+      emissiveIntensity: 0.26,
       roughness: 1,
       side: THREE.DoubleSide,
     });
@@ -236,8 +236,8 @@ function buildInstancedCrowd(rows, density = GRAPHICS.crowdDensity) {
     new THREE.Color('#463b3b'),
     new THREE.Color('#28407a'),
     new THREE.Color('#8c3327'),
-    new THREE.Color('#c9c9c4'),
-    new THREE.Color('#c8a63f'),
+    new THREE.Color('#8e8e88'),
+    new THREE.Color('#8a7233'),
   ];
 
   const dummy = new THREE.Object3D();
