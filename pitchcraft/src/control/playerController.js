@@ -1,8 +1,8 @@
 import { Action } from './input.js';
 import { PlayerState } from '../sim/player.js';
 import { PLAYER, KICK, HALF_LENGTH, HALF_GOAL } from '../core/config.js';
-import { clamp, dist2, distSq2 } from '../core/vec.js';
-import { selectPassTarget, buildKick, pressureOn } from '../sim/kicks.js';
+import { clamp, lerp, dist2, distSq2 } from '../core/vec.js';
+import { selectPassTarget, buildKick, pressureOn, shotAimPoint } from '../sim/kicks.js';
 import { EV } from '../core/events.js';
 import { Phase } from '../match/match.js';
 
@@ -495,9 +495,23 @@ export class PlayerController {
     if (type === 'shot') {
       const keeper = this.world.keeperOf(1 - this.teamId);
       const goalX = HALF_LENGTH * p.attackDir;
-      // Assist snaps the shot toward the goal frame, biased by the aim input.
-      const aimZTarget = clamp(p.pos.z + aimZ * 8, -HALF_GOAL * 0.95, HALF_GOAL * 0.95);
-      target = { x: goalX, z: aimZTarget };
+
+      // Player intent picks a point *inside the goal frame*, rather than
+      // skewing the launch direction. Deriving the aim from the raw input
+      // vector meant a shot from a wide angle was pulled across the face of
+      // goal: human shots were on target 47% of the time against the AI's 68%
+      // from further out.
+      const assisted = shotAimPoint(p, keeper, match.rng, 1);
+      // Lateral component of the input, expressed relative to the attack
+      // direction, so "push left" always means "aim left of the keeper".
+      const lateral = clamp(aimZ * p.attackDir, -1, 1);
+      const manual = lateral * HALF_GOAL * 0.95;
+      const z = clamp(
+        lerp(assisted.z, manual, KICK.shotAimManual),
+        -HALF_GOAL * 0.94,
+        HALF_GOAL * 0.94
+      );
+      target = { x: goalX, z: z * p.attackDir };
     } else if (type === 'through') {
       target = selectPassTarget(p, mates, opponents, aimX, aimZ, {
         maxRange: 34,

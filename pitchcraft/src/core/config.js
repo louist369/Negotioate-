@@ -123,7 +123,12 @@ export const KICK = {
   maxChargeTime: 1.15,
   // Directional input authority vs. assisted target. 0 = full assist, 1 = full manual.
   assistBlendPass: 0.28,
-  assistBlendShot: 0.42,
+  // Low for shots: the player's intent is expressed by *where in the goal* they
+  // aim (see shotAimManual), so the launch direction should track that target
+  // rather than being pulled back toward the raw stick vector.
+  assistBlendShot: 0.16,
+  // How far the player's lateral input moves the aim across the goal mouth.
+  shotAimManual: 0.6,
   // Cone (radians) inside which the assist looks for a receiver.
   passCone: 1.15,
   passMaxRange: 34,
