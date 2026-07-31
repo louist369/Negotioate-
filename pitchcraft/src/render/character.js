@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { PLAYER } from '../core/config.js';
 import { makeNumberTexture } from './textures.js';
+import { mergeGeometries } from './geometryUtils.js';
 
 /**
  * Procedural footballer.
@@ -50,24 +51,33 @@ function geometries() {
 
   // Kept small and tucked inside the shirt line: an oversized joint sphere
   // reads as shoulder armour rather than a footballer.
+  // Joint spheres share both a material and a local space with the limb that
+  // hangs off them, so they are merged into a single geometry. That takes a
+  // player from 24 draw calls to 16 with no visual change at all.
   const shoulder = new THREE.SphereGeometry(0.058 * S, 8, 6);
   const elbow = new THREE.SphereGeometry(0.052 * S, 8, 6);
   const knee = new THREE.SphereGeometry(0.075 * S, 8, 6);
 
-  const upperArm = new THREE.CylinderGeometry(0.052 * S, 0.044 * S, DIM.upperArm, seg);
-  upperArm.translate(0, -DIM.upperArm / 2, 0);
+  const upperArmOnly = new THREE.CylinderGeometry(0.052 * S, 0.044 * S, DIM.upperArm, seg);
+  upperArmOnly.translate(0, -DIM.upperArm / 2, 0);
+  // Shoulder ball sits at the joint origin; the upper arm hangs from it.
+  const upperArm = mergeGeometries([shoulder, upperArmOnly]);
 
-  const foreArm = new THREE.CylinderGeometry(0.044 * S, 0.036 * S, DIM.foreArm, seg);
-  foreArm.translate(0, -DIM.foreArm / 2, 0);
+  const foreArmOnly = new THREE.CylinderGeometry(0.044 * S, 0.036 * S, DIM.foreArm, seg);
+  foreArmOnly.translate(0, -DIM.foreArm / 2, 0);
 
-  const hand = new THREE.SphereGeometry(0.048 * S, 8, 6);
-  hand.scale(1, 1.25, 0.75);
+  const handOnly = new THREE.SphereGeometry(0.048 * S, 8, 6);
+  handOnly.scale(1, 1.25, 0.75);
+  handOnly.translate(0, -DIM.foreArm, 0);
+  // Elbow + forearm + hand are all rigid relative to the elbow joint.
+  const foreArm = mergeGeometries([elbow, foreArmOnly, handOnly]);
 
   const thigh = new THREE.CylinderGeometry(DIM.thighR, 0.066 * S, DIM.thigh, seg);
   thigh.translate(0, -DIM.thigh / 2, 0);
 
-  const shin = new THREE.CylinderGeometry(0.064 * S, 0.045 * S, DIM.shin, seg);
-  shin.translate(0, -DIM.shin / 2, 0);
+  const shinOnly = new THREE.CylinderGeometry(0.064 * S, 0.045 * S, DIM.shin, seg);
+  shinOnly.translate(0, -DIM.shin / 2, 0);
+  const shin = mergeGeometries([knee, shinOnly]);
 
   const foot = new THREE.BoxGeometry(0.085 * S, DIM.footH, DIM.footLen);
   foot.translate(0, -DIM.footH / 2, DIM.footLen * 0.22);
@@ -89,12 +99,8 @@ function geometries() {
   GEO = {
     torso,
     hipBlock,
-    shoulder,
-    elbow,
-    knee,
     upperArm,
     foreArm,
-    hand,
     thigh,
     shin,
     foot,
@@ -189,10 +195,8 @@ export function createPlayer(player, teamCfg, opts = {}) {
     shoulderJoint.position.set(side * DIM.shoulderW, DIM.torso * 0.94, 0);
     spine.add(shoulderJoint);
 
-    const shoulderBall = new THREE.Mesh(G.shoulder, M.shirt);
-    shoulderJoint.add(shoulderBall);
-
-    const upper = new THREE.Mesh(G.upperArm, isKeeper ? M.shirt : M.shirt);
+    // Shoulder ball is baked into the upper-arm geometry.
+    const upper = new THREE.Mesh(G.upperArm, M.shirt);
     upper.castShadow = true;
     shoulderJoint.add(upper);
 
@@ -200,18 +204,12 @@ export function createPlayer(player, teamCfg, opts = {}) {
     elbowJoint.position.y = -DIM.upperArm;
     shoulderJoint.add(elbowJoint);
 
-    const elbowBall = new THREE.Mesh(G.elbow, M.skin);
-    elbowJoint.add(elbowBall);
-
+    // Elbow ball and hand are baked into the forearm geometry.
     const fore = new THREE.Mesh(G.foreArm, M.skin);
     fore.castShadow = true;
     elbowJoint.add(fore);
 
-    const handMesh = new THREE.Mesh(G.hand, M.skin);
-    handMesh.position.y = -DIM.foreArm;
-    elbowJoint.add(handMesh);
-
-    return { shoulder: shoulderJoint, elbow: elbowJoint, hand: handMesh };
+    return { shoulder: shoulderJoint, elbow: elbowJoint, hand: fore };
   };
 
   const armL = makeArm(-1);
@@ -231,9 +229,7 @@ export function createPlayer(player, teamCfg, opts = {}) {
     kneeJoint.position.y = -DIM.thigh;
     hipJoint.add(kneeJoint);
 
-    const kneeBall = new THREE.Mesh(G.knee, M.socks);
-    kneeJoint.add(kneeBall);
-
+    // Knee ball is baked into the shin geometry.
     const shin = new THREE.Mesh(G.shin, M.socks);
     shin.castShadow = true;
     kneeJoint.add(shin);

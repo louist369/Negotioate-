@@ -532,3 +532,25 @@ describe('difficulty', () => {
     expect(easyMargin).toBeGreaterThan(hardMargin);
   });
 });
+
+describe('event bus', () => {
+  it('does not accumulate an event log during a normal match', () => {
+    // Regression: emit() used to record every event unconditionally into an
+    // array nothing ever drained, growing without bound for the whole session.
+    const match = new Match({ seed: 71 });
+    run(match, 90);
+    expect(match.bus.queue.length).toBe(0);
+  });
+
+  it('records events only when explicitly asked, and stays bounded', () => {
+    const match = new Match({ seed: 72 });
+    match.bus.startRecording(64);
+    run(match, 90);
+    expect(match.bus.queue.length).toBeGreaterThan(0);
+    expect(match.bus.queue.length).toBeLessThanOrEqual(64);
+
+    match.bus.stopRecording();
+    run(match, 20);
+    expect(match.bus.queue.length).toBe(0);
+  });
+});

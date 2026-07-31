@@ -323,9 +323,19 @@ export class Player {
     const ratio = clamp(speed / PLAYER.sprintSpeed, 0, 1);
     this.anim.speedRatio = lerp(this.anim.speedRatio, ratio, clamp(dt * 12, 0, 1));
 
-    // Stride frequency scales with speed; the 0.55 floor keeps idle sway alive.
-    const stride = lerp(0.0, 2.55, ratio) + (speed > 0.2 ? 0.55 : 0);
-    this.anim.cycle += stride * dt * Math.PI * 2 * 0.55;
+    // Cadence is derived from a realistic step *length*, not from a frequency
+    // curve. Driving frequency directly left the stride length uncontrolled: at
+    // a walking 1.5 m/s the model produced a 1.36m step, so the feet slid.
+    // Solving cadence = speed / stepLength keeps the foot planted at every pace.
+    if (speed > 0.15) {
+      const stepLength = lerp(PLAYER.stepLengthWalk, PLAYER.stepLengthSprint, ratio);
+      const stepsPerSecond = speed / stepLength;
+      // One full gait cycle is two steps, so a step is PI of cycle.
+      this.anim.cycle += stepsPerSecond * Math.PI * dt;
+    } else {
+      // Idle sway keeps a stationary player from looking frozen.
+      this.anim.cycle += 0.9 * Math.PI * dt;
+    }
     if (this.anim.cycle > Math.PI * 4) this.anim.cycle -= Math.PI * 4;
 
     // Body lean from lateral acceleration (turning) and forward drive.

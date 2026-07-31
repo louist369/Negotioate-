@@ -85,6 +85,11 @@ export const PLAYER = {
   tackleDuration: 0.42,
   tackleLungeSpeed: 9.5,
 
+  // Stride length in metres at a walk and at full sprint. Animation cadence is
+  // derived from these (cadence = speed / stepLength) so feet stay planted.
+  stepLengthWalk: 0.62,
+  stepLengthSprint: 2.45,
+
   // Seconds a player is stumbling after a lost duel.
   stumbleTime: 0.65,
   // Time after being dispossessed before the same player may re-tackle.

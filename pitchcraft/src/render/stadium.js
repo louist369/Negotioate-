@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { PITCH, GRAPHICS, HALF_LENGTH, HALF_WIDTH } from '../core/config.js';
 import { makeCrowdTexture, makeAdBoardTexture, makeRadialTexture } from './textures.js';
+import { mergeGeometries } from './geometryUtils.js';
 
 /**
  * Stadium shell.
@@ -336,42 +337,4 @@ function buildFloodlights(outerX, outerZ) {
   }
 
   return g;
-}
-
-/** Minimal geometry merge — avoids pulling in the examples/ addon for two shapes. */
-function mergeGeometries(geometries) {
-  const merged = new THREE.BufferGeometry();
-  let vertexCount = 0;
-  let indexCount = 0;
-  for (const g of geometries) {
-    vertexCount += g.attributes.position.count;
-    indexCount += g.index ? g.index.count : g.attributes.position.count;
-  }
-
-  const position = new Float32Array(vertexCount * 3);
-  const normal = new Float32Array(vertexCount * 3);
-  const index = new Uint16Array(indexCount);
-
-  let vOff = 0;
-  let iOff = 0;
-  for (const g of geometries) {
-    const pos = g.attributes.position;
-    const nor = g.attributes.normal;
-    position.set(pos.array.subarray(0, pos.count * 3), vOff * 3);
-    if (nor) normal.set(nor.array.subarray(0, nor.count * 3), vOff * 3);
-    if (g.index) {
-      for (let i = 0; i < g.index.count; i++) index[iOff + i] = g.index.array[i] + vOff;
-      iOff += g.index.count;
-    } else {
-      for (let i = 0; i < pos.count; i++) index[iOff + i] = i + vOff;
-      iOff += pos.count;
-    }
-    vOff += pos.count;
-  }
-
-  merged.setAttribute('position', new THREE.BufferAttribute(position, 3));
-  merged.setAttribute('normal', new THREE.BufferAttribute(normal, 3));
-  merged.setIndex(new THREE.BufferAttribute(index, 1));
-  merged.computeBoundingSphere();
-  return merged;
 }

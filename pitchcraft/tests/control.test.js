@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { Match, Phase } from '../src/match/match.js';
 import { PlayerController } from '../src/control/playerController.js';
 import { Action } from '../src/control/input.js';
-import { PlayerState } from '../src/sim/player.js';
+import { PlayerState, Player } from '../src/sim/player.js';
 import { EV } from '../src/core/events.js';
 import { SIM, PLAYER, PITCH, AI, HALF_LENGTH, HALF_WIDTH, TEAMS } from '../src/core/config.js';
 
@@ -470,5 +470,68 @@ describe('AI behaviour', () => {
     }
     expect(shots).toBeGreaterThan(6);
     expect(totalGoals).toBeGreaterThan(0);
+  });
+});
+
+describe('animation locomotion', () => {
+  /**
+   * Measure metres travelled per foot-step at a fixed speed. A step is half a
+   * gait cycle (PI of `anim.cycle`).
+   */
+  function stepLengthAt(speed) {
+    const p = new Player({ team: 0, role: 'CM', index: 1, attackDir: 1 });
+    const dt = 1 / 120;
+    const frames = 900;
+    let cycleAccum = 0;
+    for (let i = 0; i < frames; i++) {
+      p.vel.x = speed;
+      p.vel.z = 0;
+      const before = p.anim.cycle;
+      p.updateAnim(dt);
+      let d = p.anim.cycle - before;
+      if (d < 0) d += Math.PI * 4; // wrapped
+      cycleAccum += d;
+    }
+    const seconds = frames * dt;
+    const steps = cycleAccum / Math.PI;
+    return { metresPerStep: (speed * seconds) / steps, stepsPerSecond: steps / seconds };
+  }
+
+  it('keeps stride length in a human range at every pace', () => {
+    // Regression: cadence used to be driven by a frequency curve with the stride
+    // length left uncontrolled, which produced a 1.36m step at a 1.5m/s walk —
+    // i.e. visibly sliding feet.
+    for (const speed of [1.5, 3.0, 4.5, 6.35, 8.45]) {
+      const { metresPerStep } = stepLengthAt(speed);
+      expect(metresPerStep).toBeGreaterThan(0.55);
+      expect(metresPerStep).toBeLessThan(2.6);
+    }
+  });
+
+  it('lengthens the stride as speed rises', () => {
+    const walk = stepLengthAt(1.5).metresPerStep;
+    const jog = stepLengthAt(4.5).metresPerStep;
+    const sprint = stepLengthAt(8.45).metresPerStep;
+    expect(walk).toBeLessThan(jog);
+    expect(jog).toBeLessThan(sprint);
+  });
+
+  it('keeps cadence within a plausible band', () => {
+    for (const speed of [1.5, 4.5, 8.45]) {
+      const { stepsPerSecond } = stepLengthAt(speed);
+      expect(stepsPerSecond).toBeGreaterThan(1.2);
+      expect(stepsPerSecond).toBeLessThan(4.5);
+    }
+  });
+
+  it('keeps a stationary player idle animation alive', () => {
+    const p = new Player({ team: 0, role: 'CM', index: 1, attackDir: 1 });
+    const before = p.anim.cycle;
+    for (let i = 0; i < 120; i++) {
+      p.vel.x = 0;
+      p.vel.z = 0;
+      p.updateAnim(1 / 120);
+    }
+    expect(p.anim.cycle).not.toBe(before);
   });
 });

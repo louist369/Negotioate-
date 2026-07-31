@@ -4,9 +4,31 @@
  * never needs to know a renderer exists.
  */
 export class EventBus {
-  constructor() {
+  constructor({ record = false, maxQueue = 4096 } = {}) {
     this.handlers = new Map();
     this.queue = [];
+    /**
+     * Event recording is opt-in. It used to be unconditional, which meant a
+     * running match appended every kick, touch and possession change to an array
+     * that nothing ever drained — a slow but genuinely unbounded leak (measured
+     * at ~190 entries per simulated minute). Tests and debug tooling switch it
+     * on explicitly.
+     */
+    this.record = record;
+    this.maxQueue = maxQueue;
+  }
+
+  /** Start capturing events into `queue` for `drain()`. */
+  startRecording(maxQueue = this.maxQueue) {
+    this.record = true;
+    this.maxQueue = maxQueue;
+    return this;
+  }
+
+  stopRecording() {
+    this.record = false;
+    this.queue.length = 0;
+    return this;
   }
 
   on(type, fn) {
@@ -27,7 +49,11 @@ export class EventBus {
   }
 
   emit(type, payload) {
-    this.queue.push({ type, payload });
+    if (this.record) {
+      this.queue.push({ type, payload });
+      // Bounded even while recording, so a long debug session cannot run away.
+      if (this.queue.length > this.maxQueue) this.queue.shift();
+    }
     const list = this.handlers.get(type);
     if (list) {
       for (let i = 0; i < list.length; i++) list[i](payload, type);

@@ -116,10 +116,15 @@ entry in `KNOWN_ISSUES.md`.
 There are no animation clips. Every pose is computed from speed, heading change,
 possession and action timers, then damped toward so state changes blend.
 
-The run cycle's stride frequency is advanced in proportion to actual ground
-speed, which means feet cannot slide — the classic artefact of playing a
-fixed-speed clip on a variable-speed character. Turning speed, lean and stride
-amplitude all key off velocity.
+Cadence is derived from a realistic step *length* rather than from a frequency
+curve: `cadence = speed / stepLength`, with `stepLength` interpolated from 0.62m
+at a walk to 2.45m at a sprint. That keeps the foot planted at every pace.
+
+This was originally implemented as a frequency curve, and measuring it showed the
+claim "feet cannot slide" was simply untrue at low speed — at a 1.5 m/s walk the
+model produced a 1.36m step. Solving for step length instead gives 0.94m walking
+and 2.45m sprinting, at 1.6-3.5 steps per second, which is human gait. Tests
+assert the step length stays in that band across the whole speed range.
 
 ---
 
@@ -202,7 +207,31 @@ and the pass rate fell to 30/min.
 
 ---
 
-## 15. Everything is generated at runtime
+## 15. Event recording is opt-in
+
+`EventBus.emit` originally appended every event to a `queue` array for tests and
+debug tooling. Nothing drained it during play, so a running match accumulated
+roughly 190 entries per simulated minute forever — a slow but unbounded leak,
+found by restarting the real build 20 times and watching the queue grow linearly
+to 3829 entries. Recording is now off by default and bounded when enabled.
+
+---
+
+## 16. Difficulty scales the opponent only
+
+Difficulty tiers adjust the opposing team's pace, execution error, pressing
+frequency, shooting willingness and keeper quality. The player's own AI
+team-mates always play at full strength — being let down by your own side is not
+a difficulty setting, it's a bug.
+
+Aggression alone turned out to be a weak lever: halving the opponent's tackle
+rate barely moved scorelines. The tiers that actually separate are execution
+error and pace. Measured over 20 matches, a full-strength side beats `easy`
+20-0-0, `normal` 14-3-3 and is level with `hard` at 9-3-8.
+
+---
+
+## 17. Everything is generated at runtime
 
 Textures (turf, netting, crowd, LED boards, ball panels, shirt numbers), geometry
 and audio are all produced in code. There is no asset pipeline, no loading
