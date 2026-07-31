@@ -140,6 +140,17 @@ export class GameScene {
     fill.position.set(-40, 45, -28);
     this.scene.add(fill);
 
+    // Low front bounce, standing in for light coming back off the turf.
+    //
+    // Without it the underside of every jaw, forearm and thigh goes to near
+    // black: those surfaces face down and away from all three lights above.
+    // A real floodlit pitch is a huge bright reflector, and this is the term
+    // that makes a face readable in close-up rather than a lit forehead over a
+    // black hole.
+    const bounce = new THREE.DirectionalLight(0xa8c89a, 0.42);
+    bounce.position.set(6, -14, 34);
+    this.scene.add(bounce);
+
     // Back rim from the far stand. This is the light that separates a player
     // from the turf behind him at broadcast distance.
     const rim = new THREE.DirectionalLight(0xffd9a0, 0.55);

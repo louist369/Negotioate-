@@ -5,6 +5,7 @@ import {
   makeShirtTexture,
   makeFabricRoughness,
   makeHeadTexture,
+  makeSkinRoughness,
   makeBackDecal,
   makeCrestTexture,
 } from './textures.js';
@@ -221,32 +222,66 @@ function headShape(v, R) {
   return (a) => {
     let dz = 0;
     let dx = 0;
+    let dy = 0;
     let scale = 1;
 
-    // Brow ridge: a shallow shelf across the front, above the eyes.
-    dz += R * 0.085 * lobe(a, Math.PI / 2, 0.95) * band(h, 0.6, 0.1);
+    const front = lobe(a, Math.PI / 2, 1.1);
 
-    // Nose. Narrow in angle and short in height, so it is a nose rather than a
-    // muzzle, with the bridge running up toward the brow.
-    dz += R * 0.3 * lobe(a, Math.PI / 2, 0.34) * band(h, 0.4, 0.1);
-    dz += R * 0.13 * lobe(a, Math.PI / 2, 0.28) * band(h, 0.52, 0.09);
+    // Brow ridge: a shelf across the front, heavier at the outer edges where a
+    // real supraorbital ridge is strongest.
+    dz += R * 0.075 * lobe(a, Math.PI / 2, 0.95) * band(h, 0.62, 0.075);
+    dz += R * 0.05 * (lobe(a, 1.05, 0.3) + lobe(a, 2.09, 0.3)) * band(h, 0.62, 0.07);
 
-    // Chin, and the jaw pulling in beneath it.
-    dz += R * 0.1 * lobe(a, Math.PI / 2, 0.55) * band(h, 0.08, 0.09);
+    // Eye sockets set back under the brow — this is what gives the eyes depth
+    // rather than leaving them painted on a smooth curve.
+    dz -= R * 0.055 * (lobe(a, 1.28, 0.26) + lobe(a, 1.86, 0.26)) * band(h, 0.54, 0.055);
+
+    // Nose: bridge, then a tip that projects, then the base tucking back under.
+    //
+    // These three bands overlap, and at h = 0.4 they previously summed to
+    // 0.46 R — a 5.6cm projection against a real nose's 2.5cm. Magnitudes are
+    // set so the *sum* lands near 0.22 R, not each term individually.
+    dz += R * 0.07 * lobe(a, Math.PI / 2, 0.26) * band(h, 0.55, 0.075);
+    dz += R * 0.16 * lobe(a, Math.PI / 2, 0.22) * band(h, 0.43, 0.055);
+    dz += R * 0.09 * lobe(a, Math.PI / 2, 0.34) * band(h, 0.38, 0.045);
+    // Nostril wings either side of the tip.
+    dx += R * 0.035 * (lobe(a, 1.36, 0.16) - lobe(a, 1.78, 0.16)) * band(h, 0.39, 0.035);
+
+    // Lips: the upper sits back, the lower proud, with a shadow between.
+    dz += R * 0.055 * lobe(a, Math.PI / 2, 0.44) * band(h, 0.245, 0.03);
+    dz += R * 0.07 * lobe(a, Math.PI / 2, 0.4) * band(h, 0.2, 0.028);
+    dz -= R * 0.035 * lobe(a, Math.PI / 2, 0.5) * band(h, 0.222, 0.016);
+    dz -= R * 0.03 * lobe(a, Math.PI / 2, 0.5) * band(h, 0.155, 0.028);
+
+    // Chin, philtrum groove, and the jaw pulling in beneath.
+    dz += R * 0.09 * lobe(a, Math.PI / 2, 0.55) * band(h, 0.09, 0.075);
+    dz -= R * 0.022 * lobe(a, Math.PI / 2, 0.14) * band(h, 0.28, 0.03);
     scale -= 0.11 * band(h, 0.0, 0.13);
 
-    // Cheekbones: a widening at the sides at mid-face.
-    const side = lobe(a, 0, 0.6) + lobe(a, Math.PI, 0.6);
-    scale += 0.05 * side * band(h, 0.45, 0.12);
+    // Cheekbones, and the hollow under them.
+    const side = lobe(a, 1.0, 0.42) + lobe(a, 2.14, 0.42);
+    scale += 0.055 * side * band(h, 0.5, 0.09);
+    scale -= 0.035 * side * band(h, 0.3, 0.08);
 
-    // Ears, as small flat tabs rather than modelled shells.
-    const ear = (lobe(a, 0.12, 0.22) - lobe(a, Math.PI - 0.12, 0.22)) * band(h, 0.47, 0.075);
-    dx += R * 0.13 * ear;
+    // Jaw corner: a real mandible has an angle, not a smooth arc.
+    const jawSide = lobe(a, 0.72, 0.34) + lobe(a, 2.42, 0.34);
+    scale += 0.045 * jawSide * band(h, 0.14, 0.07);
+
+    // Ears — tabs standing off the side of the skull, tilted back slightly.
+    const earL = lobe(a, 0.1, 0.2) * band(h, 0.44, 0.085);
+    const earR = lobe(a, Math.PI - 0.1, 0.2) * band(h, 0.44, 0.085);
+    dx += R * 0.075 * (earL - earR);
+    dz -= R * 0.05 * (earL + earR);
 
     // Occiput: the skull carries further back than it does forward.
-    dz -= R * 0.1 * lobe(a, -Math.PI / 2, 1.0) * band(h, 0.62, 0.26);
+    dz -= R * 0.11 * lobe(a, -Math.PI / 2, 1.0) * band(h, 0.6, 0.28);
+    // Nape hollow beneath it.
+    dz += R * 0.05 * lobe(a, -Math.PI / 2, 0.8) * band(h, 0.12, 0.1);
 
-    return { dx, dz, scale };
+    // Temples flatten rather than bulging.
+    scale -= 0.03 * front * band(h, 0.72, 0.08);
+
+    return { dx, dy, dz, scale };
   };
 }
 
@@ -289,9 +324,13 @@ class MeshBuilder {
     const base = this.pos.length / 3;
     const [x, y, z] = r.p;
     const axis = r.axis || 'y';
-    for (let i = 0; i <= RADIAL; i++) {
+    // Sections choose their own angular resolution. A shin reads fine at 16;
+    // a face needs enough vertices to put nostrils, lips and an eye socket
+    // between the cheeks, and starving it is what makes a head look moulded.
+    const n = r.radial || RADIAL;
+    for (let i = 0; i <= n; i++) {
       // The seam vertex is duplicated so U can run 0..1 without wrapping.
-      const a = (i / RADIAL) * Math.PI * 2;
+      const a = (i / n) * Math.PI * 2;
       const c = Math.cos(a);
       const s = Math.sin(a);
       const mod = r.shape ? r.shape(a) : null;
@@ -301,7 +340,7 @@ class MeshBuilder {
       const dz = mod && mod.dz ? mod.dz : 0;
       if (axis === 'y') this.pos.push(x + c * r.rx * k + dx, y + dy, z + s * r.rz * k + dz);
       else this.pos.push(x + c * r.rx * k + dx, y + s * r.rz * k + dy, z + dz);
-      this.uv.push(i / RADIAL, r.v ?? 0);
+      this.uv.push(i / n, r.v ?? 0);
 
       const w = r.w;
       const i0 = this.boneIndex.get(w[0][0]);
@@ -312,10 +351,10 @@ class MeshBuilder {
     return base;
   }
 
-  /** Quad strip between two already-emitted rings. */
-  connect(a, b, slot) {
+  /** Quad strip between two already-emitted rings of equal resolution. */
+  connect(a, b, slot, n = RADIAL) {
     const idx = this.indices[slot];
-    for (let i = 0; i < RADIAL; i++) {
+    for (let i = 0; i < n; i++) {
       const a0 = a + i;
       const a1 = a + i + 1;
       const b0 = b + i;
@@ -331,7 +370,7 @@ class MeshBuilder {
     let prevSlot = null;
     for (const r of rings) {
       const base = this.ring(r);
-      if (prev !== null) this.connect(prev, base, r.slot ?? prevSlot);
+      if (prev !== null) this.connect(prev, base, r.slot ?? prevSlot, r.radial || RADIAL);
       prev = base;
       prevSlot = r.slot;
     }
@@ -339,7 +378,7 @@ class MeshBuilder {
   }
 
   /** Close a tube end with a fan to a single point. */
-  cap(ringBase, point, slot, weights) {
+  cap(ringBase, point, slot, weights, n = RADIAL) {
     const tip = this.pos.length / 3;
     this.pos.push(point[0], point[1], point[2]);
     this.uv.push(0.5, 0.5);
@@ -348,7 +387,7 @@ class MeshBuilder {
     this.skinIndex.push(i0, i1, 0, 0);
     this.skinWeight.push(weights[0][1], weights[1] ? weights[1][1] : 0, 0, 0);
     const idx = this.indices[slot];
-    for (let i = 0; i < RADIAL; i++) idx.push(ringBase + i, tip, ringBase + i + 1);
+    for (let i = 0; i < n; i++) idx.push(ringBase + i, tip, ringBase + i + 1);
     return tip;
   }
 
@@ -485,12 +524,15 @@ function bodyGeometry(boneIndex) {
   // of, which is what makes the join seamless rather than a step.
   const neckTop = DIM.hipY + DIM.torso + DIM.neck;
   const R = DIM.headR * 1.05;
-  const HEAD_X = 0.68; // half-width  = 0.68 R  -> ~15.5cm across
+  const HEAD_X = 0.64; // half-width  = 0.64 R  -> ~15.5cm across
   const HEAD_Z = 0.85; // half-depth  = 0.85 R  -> ~19cm front to back
   const neckR = 0.062 * S;
   const PHI0 = Math.asin(Math.min(1, neckR / (R * HEAD_X)));
   const headCentre = neckTop + R * Math.cos(PHI0);
 
+  // A face needs far more angular resolution than a shin, and the neck rings
+  // must share it or the lathe cannot stitch them to the skull.
+  const FACE_RADIAL = 28;
   const headRings = [];
   // Neck: a short column from the shoulders up to the jaw.
   for (let i = 0; i <= 2; i++) {
@@ -502,10 +544,13 @@ function bodyGeometry(boneIndex) {
       w: t < 0.5 ? [['neck', 1]] : [['neck', 0.6], ['head', 0.4]],
       slot: SLOT.face,
       v: lerp(0.02, 0.2, t),
+      radial: FACE_RADIAL,
     });
   }
   // Skull.
-  const HEAD_STEPS = 12;
+  // Vertical resolution matters too — lips, nostrils and a lid crease all sit
+  // within about a fifth of the head's height.
+  const HEAD_STEPS = 26;
   for (let i = 0; i <= HEAD_STEPS; i++) {
     const k = i / HEAD_STEPS;
     const phi = lerp(PHI0, Math.PI, k);
@@ -522,6 +567,7 @@ function bodyGeometry(boneIndex) {
       w: k < 0.12 ? [['neck', 0.4], ['head', 0.6]] : [['head', 1]],
       slot: SLOT.face,
       v,
+      radial: FACE_RADIAL,
       shape: headShape(v, R),
     });
   }
@@ -533,8 +579,9 @@ function bodyGeometry(boneIndex) {
   // the face map paints. At 1.78 it started at V 0.55 and covered the eyes.
   const HAIR_PHI = PHI0 + 0.7 * (Math.PI - PHI0);
   const hairRings = [];
-  for (let i = 0; i <= 6; i++) {
-    const k = i / 6;
+  const HAIR_STEPS = 10;
+  for (let i = 0; i <= HAIR_STEPS; i++) {
+    const k = i / HAIR_STEPS;
     const phi = lerp(HAIR_PHI, Math.PI, k);
     const hr = R * 1.03;
     hairRings.push({
@@ -544,6 +591,7 @@ function bodyGeometry(boneIndex) {
       w: [['head', 1]],
       slot: SLOT.hair,
       v: k,
+      radial: FACE_RADIAL,
       // The hairline sits a little lower at the back than across the brow. This
       // was 0.16R and applied to the sides too, which hung sideburns down over
       // both cheeks.
@@ -736,9 +784,14 @@ function crestTexture(teamCfg) {
 
 /** One head map for the whole game — skin tone comes from the material colour. */
 let HEAD_TEX = null;
+let SKIN_ROUGH = null;
 function headTexture() {
   if (!HEAD_TEX) HEAD_TEX = makeHeadTexture(null);
   return HEAD_TEX;
+}
+function skinRoughness() {
+  if (!SKIN_ROUGH) SKIN_ROUGH = makeSkinRoughness(null);
+  return SKIN_ROUGH;
 }
 
 function kitTextures(teamCfg, isKeeper) {
@@ -797,12 +850,16 @@ export function createPlayer(player, teamCfg, opts = {}) {
     shirt: mat(shirtColor, 0.58, { map: kit.shirt, roughnessMap: kit.rough }),
     shorts: mat(shortsColor, 0.62, { roughnessMap: kit.rough }),
     socks: mat(socksColor, 0.8, { roughnessMap: kit.rough }),
-    skin: mat(skin, 0.62),
+    // Skin is not uniformly matte: forehead, nose and cheekbones are oily and
+    // catch a hard highlight while the jaw stays dull. A single roughness value
+    // gives the whole head one flat sheen, which is most of what separates a CG
+    // head from a photographed one.
+    skin: mat(skin, 0.52, { roughnessMap: skinRoughness() }),
     boot: mat(isKeeper ? '#141414' : colors.accent, 0.24, { metalness: 0.12 }),
     hair: mat(hairCol, 0.88),
     // The head map is white-based, so this material's colour still carries the
     // player's skin tone — one shared texture serves every skin in the squad.
-    face: mat(skin, 0.6, { map: headTexture() }),
+    face: mat(skin, 0.52, { map: headTexture(), roughnessMap: skinRoughness() }),
   };
 
   // Order must match SLOT.
