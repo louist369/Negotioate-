@@ -65,6 +65,7 @@ class App {
     this.lastTime = 0;
     this.running = true;
     this.showPerf = false;
+    this.autoPlay = false;
 
     this.bindGlobal();
     this.scene.cameraRig.snapTo(this.match.world.ball);
@@ -114,6 +115,19 @@ class App {
     this.accumulator = 0;
   }
 
+  /**
+   * Hand the human's team back to the AI so both sides are computer-controlled.
+   * Used as an attract/demo mode and by the screenshot harness — with a human
+   * controller attached but no input arriving, the player's man simply stands
+   * still, which leaves that team a man down.
+   */
+  setAutoPlay(on) {
+    this.autoPlay = !!on;
+    this.match.attachHumanController(on ? null : this.controller);
+    if (!on) this.controller.selectNearestToBall();
+    return this.autoPlay;
+  }
+
   /** One frame. */
   frame(now) {
     const time = now * 0.001;
@@ -146,7 +160,8 @@ class App {
     this.input.endFrame();
 
     // --- render ------------------------------------------------------------
-    this.scene.update(dt, this.controller.controlledPlayer);
+    const controlled = this.autoPlay ? null : this.controller.controlledPlayer;
+    this.scene.update(dt, controlled);
     this.scene.render();
 
     this.hud.update(dt);

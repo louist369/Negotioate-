@@ -362,7 +362,6 @@ export class PlayerController {
       const d = Math.hypot(tx, tz);
       if (d < PLAYER.tackleRange * 1.6) {
         if (p.startTackle(tx, tz)) {
-          match.stats[this.teamId].tackles++;
           this.bus.emit(EV.TACKLE, { player: p, attempt: true, pos: { ...p.pos } });
         }
       } else if (mag > 0.1) {
@@ -436,7 +435,6 @@ export class PlayerController {
       // Assist snaps the shot toward the goal frame, biased by the aim input.
       const aimZTarget = clamp(p.pos.z + aimZ * 8, -HALF_GOAL * 0.95, HALF_GOAL * 0.95);
       target = { x: goalX, z: aimZTarget };
-      match.stats[this.teamId].shots++;
     } else if (type === 'through') {
       target = selectPassTarget(p, mates, opponents, aimX, aimZ, {
         maxRange: 34,
@@ -448,7 +446,6 @@ export class PlayerController {
       if (target) {
         target = { x: target.x + p.attackDir * KICK.throughLead, z: target.z, player: target.player };
       }
-      match.stats[this.teamId].passes++;
     } else {
       target = selectPassTarget(p, mates, opponents, aimX, aimZ, {
         maxRange: type === 'loft' ? 40 : KICK.passMaxRange,
@@ -456,7 +453,6 @@ export class PlayerController {
         lead: 0.3,
         allowKeeper: true,
       });
-      match.stats[this.teamId].passes++;
     }
 
     const { vel, spin } = buildKick(p, ball, type, power, aimX, aimZ, target, pressure, match.rng);

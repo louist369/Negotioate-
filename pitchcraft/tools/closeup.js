@@ -60,7 +60,7 @@ async function main() {
 
   await page.goto(`http://localhost:${PORT}/?quality=medium`, { waitUntil: 'load', timeout: 60000 });
   await page.waitForFunction(() => !!window.__pitchcraft, null, { timeout: 60000 });
-  await sleep(2500);
+  await sleep(3500);
 
   /**
    * Freeze the camera at a fixed vantage. `update()` would immediately drag it

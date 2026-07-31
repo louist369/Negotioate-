@@ -72,7 +72,38 @@ export class Match {
     this.possessionTeam = null;
     this.possessionTimer = [0, 0];
 
+    this.bindStats();
     this.setupKickoff(this.rng.chance(0.5) ? 0 : 1);
+  }
+
+  /**
+   * Match statistics are accumulated from the event bus rather than at each call
+   * site. Incrementing them inside the human controller meant every AI shot and
+   * tackle went uncounted, and the full-time panel reported zeroes.
+   */
+  bindStats() {
+    this.bus.on(EV.SHOT, (e) => {
+      if (e.player) this.stats[e.player.team].shots++;
+    });
+    this.bus.on(EV.PASS, (e) => {
+      if (e.player) this.stats[e.player.team].passes++;
+    });
+    this.bus.on(EV.TACKLE, (e) => {
+      // Count committed attempts; `success` events are the resolution of one.
+      if (e.attempt && e.player) this.stats[e.player.team].tackles++;
+    });
+    // Only the resolved save counts. `attempt: true` is the dive commit, and a
+    // caught save also emits CATCH — counting either would double up.
+    this.bus.on(EV.SAVE, (e) => {
+      if (!e.attempt && e.keeper) this.stats[e.keeper.team].saves++;
+    });
+    this.bus.on(EV.POSSESSION, (e) => {
+      // A completed pass is one collected by a team-mate of the passer.
+      const from = this.world.ball.inFlightFrom;
+      if (e.player && from && from.team === e.player.team && from !== e.player) {
+        this.stats[e.player.team].passesCompleted++;
+      }
+    });
   }
 
   blankStats() {

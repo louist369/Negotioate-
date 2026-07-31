@@ -431,3 +431,33 @@ describe('determinism', () => {
     expect(same).toBe(false);
   });
 });
+
+describe('match statistics', () => {
+  it('counts shots, tackles and saves for both teams, not just the human', () => {
+    // Regression: stats were incremented inside the human controller only, so a
+    // fully AI match reported zero shots and zero tackles at full time.
+    const match = new Match({ seed: 5150 });
+    run(match, MATCH.durationSeconds + 40, (m) => m.isOver);
+    expect(match.isOver).toBe(true);
+
+    const total = (k) => match.stats[0][k] + match.stats[1][k];
+    expect(total('shots')).toBeGreaterThan(0);
+    expect(total('tackles')).toBeGreaterThan(0);
+    expect(total('passes')).toBeGreaterThan(0);
+    // Both sides get on the ball over a full match.
+    expect(match.stats[0].passes).toBeGreaterThan(0);
+    expect(match.stats[1].passes).toBeGreaterThan(0);
+    // Possession shares are a normalised split.
+    expect(match.stats[0].possession + match.stats[1].possession).toBeCloseTo(1, 3);
+  });
+
+  it('resets statistics on a new match', () => {
+    const match = new Match({ seed: 5151 });
+    run(match, 60);
+    expect(match.stats[0].passes + match.stats[1].passes).toBeGreaterThan(0);
+    match.resetMatch(5152);
+    expect(match.stats[0].passes).toBe(0);
+    expect(match.stats[1].shots).toBe(0);
+    expect(match.stats[0].tackles).toBe(0);
+  });
+});

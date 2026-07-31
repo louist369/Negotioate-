@@ -121,6 +121,9 @@ async function main() {
       ([k, budget]) => {
         const app = window.__pitchcraft;
         if (app.match.paused) app.match.togglePause();
+        // Stepping a finished match is a no-op, so start a fresh one rather
+        // than spinning for the whole budget with nothing happening.
+        if (app.match.isOver) app.restart();
         const step = 1 / 120;
         const n = Math.floor(budget / step);
         window.__evidence[k] = false;
@@ -214,6 +217,12 @@ async function main() {
   await play(0.3);
 
   console.log('running to full time…');
+  // Both sides on AI for the full-time panel: a human controller with no input
+  // leaves that team's selected player standing still, i.e. a man down.
+  await page.evaluate(() => {
+    window.__pitchcraft.setAutoPlay(true);
+    window.__pitchcraft.restart();
+  });
   await fastForward(340);
   await play(1.0);
   await shot('09-fulltime');
