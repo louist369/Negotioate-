@@ -547,3 +547,107 @@ each fixing something a screenshot made obvious and no test could see.
 The two defects found by instrumentation rather than by looking (celebrating
 players leaving the stadium, and an overlay reporting one draw call) were both
 invisible in every screenshot taken this round.
+
+---
+
+# Round four: toward a PS2-era football game
+
+A concrete target this time — *"get as close to FIFA 2004 level."* That is a
+useful brief, because it is measurable: PS2-era football players were roughly
+1500–3000 triangles with modelled heads, kits carrying a name, a number and a
+crest, and a pitch with furniture on it. The gap could be listed rather than
+guessed at.
+
+## 38. The ring generator could only make eggs
+
+**Found:** every cross-section was a plain ellipse, so the only head the
+generator could produce was a body of revolution. No amount of texture work
+fixes a missing brow.
+
+**Fixed:** rings now take an optional `shape(angle)` returning a local
+displacement. A brow ridge, a nose, cheekbones, ears and an occiput are all
+Gaussian lobes in angle crossed with bands in height. `RADIAL` went from 12 to
+16, because a nose needs enough angular resolution not to read as a wedge — a
+player is now ~3.2k triangles, squarely in the target range.
+
+## 39. The first head was a diamond
+
+**Found:** the skull lerped `y` linearly while driving the radius with a sine.
+Those are only the same shape if the two parametrisations agree, and they did
+not. The result was a diamond wearing a conical hat, because the hair cap was
+built on the same broken profile and was wider than the skull beneath it.
+
+**Fixed:** the head is now swept properly by polar angle over an ellipsoid —
+0.68 R wide, 0.85 R deep, so it is a skull rather than a ball. The neck meets it
+at `PHI0`, computed so the first head ring is exactly as wide as the neck it
+grows out of.
+
+## 40. The face was painted upside down
+
+**Found:** the head map drew eyes at canvas y = 0.63. A `CanvasTexture` is
+flipped on Y by default, so that lands at v = 0.37 — below the mouth. The face
+had been inverted since the moment it was added, and the only reason it was not
+obvious is that the existing close-up harness shoots from three-quarters behind.
+
+**Fixed:** the generator now works in texture space with a single `py(v)`
+conversion, which removes the whole class of mistake. Added `tools/face.js`,
+which parks the camera in front of a player's head — the harness that would have
+caught this immediately.
+
+## 41. Every away player appeared to be wearing a vest
+
+Two separate causes, found together:
+
+1. The sleeve's V ran 0.88–0.93, which lands on the shirt texture's narrow
+   accent trim band. Ironmoor's accent is a pale peach, so the entire sleeve
+   rendered the exact colour of bare skin.
+2. More fundamentally, the chest's half-width was 0.178 while the shoulder
+   joints sit 0.152 apart — **the ribcage was wider than the arms hung**. Only
+   2.7cm of sleeve ever cleared the torso silhouette. Arithmetic, not opinion:
+   arm centre 0.141 plus radius 0.053 against a chest reaching 0.167.
+
+**Fixed:** chest narrowed below the shoulder spacing, sleeve extended to 62% of
+the upper arm, and its V mapped into mid-torso — which is robust to any palette
+and looks better, since the body stripes now run out along the sleeve.
+
+## 42. A kit needs a name on it
+
+**Found:** a number alone reads as a training bib. This is the cheapest single
+change that makes a shirt look like a football shirt.
+
+**Added:** surname arched above the squad number on the back, an original club
+crest on the chest, and a small chest number. Names are invented — `SQUAD_NAMES`
+in config, two lists with a faint regional flavour so a squad reads as a squad.
+No real player's name appears anywhere.
+
+The decals are planes parented to the spine bone, so they ride the torso as it
+twists. The back decal and chest number are per player; the crest and shirt maps
+stay cached per team.
+
+## 43. Corner flags
+
+Eighty triangles, and the cheapest thing that makes a rendered pitch read as a
+football pitch rather than a green rectangle with lines on it. Broadcast framing
+nearly always has one in shot.
+
+## 44. The lower face turned away from the light
+
+**Found:** in a front-on close-up the whole lower face went almost black. Not a
+texture fault — the jaw was undercut by a 0.2 scale pinch and a 0.4 R nose, so
+the surface genuinely faced away from a single hard key light.
+
+**Fixed:** pinch to 0.11, nose to 0.3 R. Worth recording that this only ever
+showed at a camera distance the game never uses; it was found by building a
+harness that looks closer than gameplay does, which is the point of having one.
+
+---
+
+## What round four was worth
+
+Two of these — the inverted face and the buried sleeve — had been shipping for a
+while and were invisible from every angle the existing harnesses shot from. The
+fix in both cases was a new harness, not a new idea.
+
+The sleeve bug is the one worth remembering: it looked like a colour problem and
+was actually an arithmetic one. The chest was wider than the arms hung, and no
+amount of texture tuning would ever have fixed it.

@@ -6,6 +6,7 @@ import {
   PLAYER,
   TEAMS,
   FORMATIONS,
+  SQUAD_NAMES,
   AI,
   HALF_LENGTH,
   HALF_WIDTH,
@@ -57,6 +58,7 @@ export class World {
           attackDir: teamCfg.attackDir,
           skinIndex: (i * 3 + t * 2) % teamCfg.colors.skinPalette.length,
           number: numbers[i] ?? i + 1,
+          surname: (SQUAD_NAMES[t] ?? [])[i] ?? '',
         });
         p.formationSlot = { x: slot.x, z: slot.z };
         this.teams[t].push(p);

@@ -19,7 +19,16 @@ let nextId = 1;
  * all of them, so AI and human players obey identical physics.
  */
 export class Player {
-  constructor({ team, role, index, isKeeper = false, attackDir = 1, skinIndex = 0, number = 2 }) {
+  constructor({
+    team,
+    role,
+    index,
+    isKeeper = false,
+    attackDir = 1,
+    skinIndex = 0,
+    number = 2,
+    surname = '',
+  }) {
     this.id = nextId++;
     this.team = team;
     this.role = role;
@@ -28,6 +37,8 @@ export class Player {
     this.attackDir = attackDir;
     this.skinIndex = skinIndex;
     this.number = number;
+    /** Shown on the back of the shirt. Purely cosmetic; the sim never reads it. */
+    this.surname = surname;
 
     this.pos = { x: 0, z: 0 };
     this.vel = { x: 0, z: 0 };

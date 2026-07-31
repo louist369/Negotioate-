@@ -5,6 +5,8 @@ import {
   makeShirtTexture,
   makeFabricRoughness,
   makeHeadTexture,
+  makeBackDecal,
+  makeCrestTexture,
 } from './textures.js';
 
 /**
@@ -65,9 +67,14 @@ const DIM = {
 /** Material slots, in the order their geometry groups are emitted. */
 const SLOT = { shirt: 0, shorts: 1, socks: 2, skin: 3, boot: 4, hair: 5, face: 6 };
 
-/** Vertices around each cross-section. 12 is enough to read as round at any
- *  distance the broadcast camera ever gets to. */
-const RADIAL = 12;
+/**
+ * Vertices around each cross-section. 12 was enough while every ring was a
+ * plain ellipse; a sculpted face needs enough angular resolution to put a nose
+ * between two cheeks, and 16 is the point where that stops reading as a wedge.
+ * At 16 a player is ~3.2k triangles, which is squarely in the range the PS2-era
+ * football games this is aiming at used.
+ */
+const RADIAL = 16;
 
 // ---------------------------------------------------------------------------
 // Skeleton
@@ -173,6 +180,76 @@ function bindPositions(index) {
   return p;
 }
 
+
+// ---------------------------------------------------------------------------
+// Head sculpting
+// ---------------------------------------------------------------------------
+
+/**
+ * A face is a set of local displacements at particular angles and heights.
+ *
+ * Angles: 0 is +X (the player's right), PI/2 is +Z, which is the direction he
+ * faces — so the nose lives at PI/2 and the back of the skull at 3*PI/2.
+ *
+ * Heights use `h`, the head's own parameter: 0 at the jawline, 1 at the crown.
+ * The head section's ring parameter `t` includes the neck, so h is derived from
+ * it — and the head *texture* is mapped in `t`, which is what keeps the painted
+ * eyes sitting on the modelled brow rather than beside it.
+ */
+const TAU = Math.PI * 2;
+
+/** Gaussian falloff in angle, wrapping correctly around the seam. */
+function lobe(a, centre, width) {
+  let d = (a - centre) % TAU;
+  if (d > Math.PI) d -= TAU;
+  if (d < -Math.PI) d += TAU;
+  return Math.exp(-(d / width) * (d / width));
+}
+
+/** Gaussian falloff in height. */
+function band(h, centre, width) {
+  const d = (h - centre) / width;
+  return Math.exp(-d * d);
+}
+
+function headShape(v, R) {
+  // V runs 0.2 at the jaw to 1.0 at the crown; h is 0 to 1 over the same span.
+  const h = (v - 0.2) / 0.8;
+  // Neck rings stay plain — a nose on the throat is not an improvement.
+  if (h < 0) return null;
+
+  return (a) => {
+    let dz = 0;
+    let dx = 0;
+    let scale = 1;
+
+    // Brow ridge: a shallow shelf across the front, above the eyes.
+    dz += R * 0.085 * lobe(a, Math.PI / 2, 0.95) * band(h, 0.6, 0.1);
+
+    // Nose. Narrow in angle and short in height, so it is a nose rather than a
+    // muzzle, with the bridge running up toward the brow.
+    dz += R * 0.3 * lobe(a, Math.PI / 2, 0.34) * band(h, 0.4, 0.1);
+    dz += R * 0.13 * lobe(a, Math.PI / 2, 0.28) * band(h, 0.52, 0.09);
+
+    // Chin, and the jaw pulling in beneath it.
+    dz += R * 0.1 * lobe(a, Math.PI / 2, 0.55) * band(h, 0.08, 0.09);
+    scale -= 0.11 * band(h, 0.0, 0.13);
+
+    // Cheekbones: a widening at the sides at mid-face.
+    const side = lobe(a, 0, 0.6) + lobe(a, Math.PI, 0.6);
+    scale += 0.05 * side * band(h, 0.45, 0.12);
+
+    // Ears, as small flat tabs rather than modelled shells.
+    const ear = (lobe(a, 0.12, 0.22) - lobe(a, Math.PI - 0.12, 0.22)) * band(h, 0.47, 0.075);
+    dx += R * 0.13 * ear;
+
+    // Occiput: the skull carries further back than it does forward.
+    dz -= R * 0.1 * lobe(a, -Math.PI / 2, 1.0) * band(h, 0.62, 0.26);
+
+    return { dx, dz, scale };
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Mesh generation
 // ---------------------------------------------------------------------------
@@ -196,7 +273,18 @@ class MeshBuilder {
     this.indices = Array.from({ length: 7 }, () => []);
   }
 
-  /** Emit one ring's vertices and return the index of its first vertex. */
+  /**
+   * Emit one ring's vertices and return the index of its first vertex.
+   *
+   * `r.shape(angle, ring)` optionally returns `{ dx, dy, dz, scale }` to push
+   * individual vertices off the base ellipse. That is what turns a stack of
+   * ellipses into a face: a brow ridge, a nose and a jaw are all local
+   * displacements at particular angles, and without it every head this
+   * generator can make is an egg.
+   *
+   * Angle convention: 0 is +X, PI/2 is +Z, which is the direction the player
+   * faces. So the front of the head is at `a = PI/2`.
+   */
   ring(r) {
     const base = this.pos.length / 3;
     const [x, y, z] = r.p;
@@ -206,8 +294,13 @@ class MeshBuilder {
       const a = (i / RADIAL) * Math.PI * 2;
       const c = Math.cos(a);
       const s = Math.sin(a);
-      if (axis === 'y') this.pos.push(x + c * r.rx, y, z + s * r.rz);
-      else this.pos.push(x + c * r.rx, y + s * r.rz, z);
+      const mod = r.shape ? r.shape(a) : null;
+      const k = mod && mod.scale !== undefined ? mod.scale : 1;
+      const dx = mod && mod.dx ? mod.dx : 0;
+      const dy = mod && mod.dy ? mod.dy : 0;
+      const dz = mod && mod.dz ? mod.dz : 0;
+      if (axis === 'y') this.pos.push(x + c * r.rx * k + dx, y + dy, z + s * r.rz * k + dz);
+      else this.pos.push(x + c * r.rx * k + dx, y + s * r.rz * k + dy, z + dz);
       this.uv.push(i / RADIAL, r.v ?? 0);
 
       const w = r.w;
@@ -344,9 +437,13 @@ function bodyGeometry(boneIndex) {
     let rx;
     if (t < 0.16) rx = lerp(0.1, 0.145, t / 0.16); // pelvis flares out
     else if (t < 0.42) rx = lerp(0.145, 0.128, (t - 0.16) / 0.26); // waist
-    else if (t < 0.74) rx = lerp(0.128, 0.178, (t - 0.42) / 0.32); // chest
-    else if (t < 0.88) rx = lerp(0.178, 0.132, (t - 0.74) / 0.14); // trapezius
-    else rx = lerp(0.132, 0.056, (t - 0.88) / 0.12); // into the neck
+    // The chest must stay narrower than the shoulder joints sit apart
+    // (DIM.shoulderW = 0.152), or the arms hang *inside* the ribcage. At 0.178
+    // only 2.7cm of sleeve ever cleared the torso silhouette, so every player
+    // appeared to be playing in a vest.
+    else if (t < 0.74) rx = lerp(0.128, 0.152, (t - 0.42) / 0.32); // chest
+    else if (t < 0.88) rx = lerp(0.152, 0.124, (t - 0.74) / 0.14); // trapezius
+    else rx = lerp(0.124, 0.056, (t - 0.88) / 0.12); // into the neck
     rx *= S;
     const rz = rx * (t < 0.42 ? 0.78 : 0.66);
 
@@ -377,51 +474,83 @@ function bodyGeometry(boneIndex) {
   m.cap(crotchRing, [0, crotchY - 0.02 * S, 0], SLOT.shorts, [['hips', 1]]);
 
   // --- neck and head -------------------------------------------------------
-  const headBase = DIM.hipY + DIM.torso;
-  const headCentre = headBase + DIM.neck + DIM.headR * 1.02;
-  const headRings = [];
-  const HEAD_STEPS = 14;
-  for (let i = 0; i <= HEAD_STEPS; i++) {
-    const t = i / HEAD_STEPS;
-    const y = lerp(headBase, headCentre + DIM.headR * 1.05, t);
-    let rx;
-    if (t < 0.22) rx = lerp(0.056, 0.049, t / 0.22) * S; // neck
-    else {
-      // Skull: a squashed sphere profile, slightly longer than it is wide.
-      const u = (t - 0.22) / 0.78;
-      rx = Math.sin(Math.min(u, 1) * Math.PI * 0.94 + 0.06) * DIM.headR * 1.06;
-      rx = Math.max(rx, 0.012 * S);
-    }
-    const rz = rx * (t < 0.22 ? 1 : 1.06);
-    const w =
-      t < 0.18
-        ? [['neck', 1]]
-        : t < 0.34
-          ? [['neck', 1 - (t - 0.18) / 0.16], ['head', (t - 0.18) / 0.16]]
-          : [['head', 1]];
-    headRings.push({ p: [0, y, 0], rx, rz, w, slot: SLOT.face, v: t });
-  }
-  const headTop = m.lathe(headRings);
-  m.cap(headTop, [0, headCentre + DIM.headR * 1.1, 0], SLOT.face, [['head', 1]]);
+  //
+  // The head is a real ellipsoid swept by polar angle, not a radius curve
+  // sampled against a linear height. The previous version lerped y linearly
+  // while driving the radius with a sine, which is only a sphere if the two
+  // parametrisations agree — they did not, and the result was a diamond.
+  //
+  // phi runs 0 (bottom pole) to PI (crown). The neck meets the skull at PHI0,
+  // chosen so the first head ring is exactly as wide as the neck it grows out
+  // of, which is what makes the join seamless rather than a step.
+  const neckTop = DIM.hipY + DIM.torso + DIM.neck;
+  const R = DIM.headR * 1.05;
+  const HEAD_X = 0.68; // half-width  = 0.68 R  -> ~15.5cm across
+  const HEAD_Z = 0.85; // half-depth  = 0.85 R  -> ~19cm front to back
+  const neckR = 0.062 * S;
+  const PHI0 = Math.asin(Math.min(1, neckR / (R * HEAD_X)));
+  const headCentre = neckTop + R * Math.cos(PHI0);
 
-  // Hair: a second shell over the back and top of the skull, offset outward.
-  const hairRings = [];
-  for (let i = 0; i <= 9; i++) {
-    const t = i / 9;
-    const y = lerp(headCentre + DIM.headR * 0.42, headCentre + DIM.headR * 1.0, t);
-    const u = t * 0.46 + 0.54;
-    const rx = Math.sin(u * Math.PI * 0.94 + 0.06) * DIM.headR * 1.035;
-    hairRings.push({
-      p: [0, y, -0.008 * S],
-      rx,
-      rz: rx * 1.06,
-      w: [['head', 1]],
-      slot: SLOT.hair,
-      v: t,
+  const headRings = [];
+  // Neck: a short column from the shoulders up to the jaw.
+  for (let i = 0; i <= 2; i++) {
+    const t = i / 2;
+    headRings.push({
+      p: [0, lerp(DIM.hipY + DIM.torso - 0.015 * S, neckTop, t), 0],
+      rx: lerp(0.066 * S, neckR, t),
+      rz: lerp(0.07 * S, neckR, t),
+      w: t < 0.5 ? [['neck', 1]] : [['neck', 0.6], ['head', 0.4]],
+      slot: SLOT.face,
+      v: lerp(0.02, 0.2, t),
     });
   }
-  const hairTop = m.lathe(hairRings);
-  m.cap(hairTop, [0, headCentre + DIM.headR * 1.03, -0.004 * S], SLOT.hair, [['head', 1]]);
+  // Skull.
+  const HEAD_STEPS = 12;
+  for (let i = 0; i <= HEAD_STEPS; i++) {
+    const k = i / HEAD_STEPS;
+    const phi = lerp(PHI0, Math.PI, k);
+    const y = headCentre - R * Math.cos(phi);
+    const rx = R * HEAD_X * Math.sin(phi);
+    const rz = R * HEAD_Z * Math.sin(phi);
+    // V is the face map's own axis: 0.2 at the jaw, 1.0 at the crown, so the
+    // painted eyes land on the modelled brow rather than beside it.
+    const v = lerp(0.2, 1, k);
+    headRings.push({
+      p: [0, y, 0],
+      rx: Math.max(rx, 0.004 * S),
+      rz: Math.max(rz, 0.004 * S),
+      w: k < 0.12 ? [['neck', 0.4], ['head', 0.6]] : [['head', 1]],
+      slot: SLOT.face,
+      v,
+      shape: headShape(v, R),
+    });
+  }
+  m.lathe(headRings);
+
+  // Hair: a cap following the same ellipsoid, a hair's breadth outside it,
+  // starting above the brow so the face is not buried.
+  // Chosen so the cap's lower edge lands at V ~0.76 — just under the hairline
+  // the face map paints. At 1.78 it started at V 0.55 and covered the eyes.
+  const HAIR_PHI = PHI0 + 0.7 * (Math.PI - PHI0);
+  const hairRings = [];
+  for (let i = 0; i <= 6; i++) {
+    const k = i / 6;
+    const phi = lerp(HAIR_PHI, Math.PI, k);
+    const hr = R * 1.03;
+    hairRings.push({
+      p: [0, headCentre - hr * Math.cos(phi), 0],
+      rx: Math.max(hr * HEAD_X * Math.sin(phi), 0.004 * S),
+      rz: Math.max(hr * HEAD_Z * Math.sin(phi), 0.004 * S),
+      w: [['head', 1]],
+      slot: SLOT.hair,
+      v: k,
+      // The hairline sits a little lower at the back than across the brow. This
+      // was 0.16R and applied to the sides too, which hung sideburns down over
+      // both cheeks.
+      shape: (a) => ({ dy: -R * 0.07 * (1 - k) * Math.max(0, -Math.sin(a)) }),
+    });
+  }
+  m.lathe(hairRings);
 
   // --- arms ----------------------------------------------------------------
   for (const key of ['armL', 'armR']) {
@@ -437,7 +566,7 @@ function bodyGeometry(boneIndex) {
       const t = i / UP_STEPS;
       const y = lerp(sh[1] + 0.028 * S, el[1], t);
       const x = lerp(sh[0] * 0.42, el[0], Math.min(t * 1.6, 1));
-      const r = lerp(0.069, 0.05, t) * S;
+      const r = lerp(0.062, 0.046, t) * S;
       let w;
       if (t < 0.14) {
         const k = t / 0.14;
@@ -446,18 +575,23 @@ function bodyGeometry(boneIndex) {
         const u = (t - 0.14) / 0.86;
         w = jointWeights(`${key}.shoulder`, `${key}.elbow`, u);
       }
-      // Sleeve for the top 55%, bare arm below. V is mapped into the shirt
-      // texture's yoke band so the sleeve carries the collar trim.
-      const sleeve = t < 0.55;
+      // Sleeve over the top 62% of the upper arm — a short sleeve ends around
+      // mid-bicep, and the part nearest the shoulder is hidden by the chest.
+      const sleeve = t < 0.62;
       rings.push({
         p: [x, y, 0],
         rx: r,
         rz: r * 0.94,
         w,
         slot: sleeve ? SLOT.shirt : SLOT.skin,
-        // Start below the yoke so the sleeve is team colour, and run down to
-        // the trim band so the cuff picks up the accent stripe.
-        v: sleeve ? lerp(0.88, 0.93, t / 0.55) : 0,
+        // Sample the *body* of the shirt, not the yoke or the trim.
+        //
+        // This previously ran V from 0.88 to 0.93, which lands squarely on the
+        // narrow accent trim band — and Ironmoor's accent is a pale peach, so
+        // every away player wore sleeves the exact colour of bare skin. Mapping
+        // into mid-torso instead is both robust to any palette and better
+        // looking: the body stripes run out along the sleeve.
+        v: sleeve ? lerp(0.62, 0.45, t / 0.62) : 0,
       });
     }
 
@@ -466,7 +600,7 @@ function bodyGeometry(boneIndex) {
     for (let i = 1; i <= LOW_STEPS; i++) {
       const t = i / LOW_STEPS;
       const y = lerp(el[1], hd[1], t);
-      const r = lerp(0.048, 0.036, t) * S;
+      const r = lerp(0.044, 0.033, t) * S;
       rings.push({
         p: [el[0], y, 0],
         rx: r,
@@ -589,6 +723,17 @@ const HAIR_TONES = ['#191512', '#2e2118', '#4a3220', '#6d4a26', '#a8783c', '#1b1
 /** Kit textures are per team, not per player. */
 const KIT_CACHE = new Map();
 
+/** Crests are per team; built once and shared by the whole squad. */
+const CREST_CACHE = new Map();
+function crestTexture(teamCfg) {
+  let t = CREST_CACHE.get(teamCfg.id);
+  if (!t) {
+    t = makeCrestTexture(teamCfg.colors, teamCfg.short.slice(0, 2));
+    CREST_CACHE.set(teamCfg.id, t);
+  }
+  return t;
+}
+
 /** One head map for the whole game — skin tone comes from the material colour. */
 let HEAD_TEX = null;
 function headTexture() {
@@ -683,24 +828,60 @@ export function createPlayer(player, teamCfg, opts = {}) {
   mesh.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, DIM.hipY, 0), PLAYER.height * 1.3);
   mesh.frustumCulled = false;
 
-  // Shirt number on the back, as a decal plane parented to the spine bone so it
-  // rides the torso.
-  const numTex = makeNumberTexture(player.number, isKeeper ? '#f0f0f0' : colors.accent);
-  const numMat = new THREE.MeshBasicMaterial({
-    map: numTex,
-    transparent: true,
-    depthWrite: false,
-  });
-  const num = new THREE.Mesh(new THREE.PlaneGeometry(0.17 * S, 0.17 * S), numMat);
-  num.position.set(0, DIM.torso * 0.58, -0.126 * S);
-  num.rotation.y = Math.PI;
-  num.renderOrder = 1;
-  skeleton.joints.spine.add(num);
+  // Kit decals.
+  //
+  // These are planes parented to the spine bone, so they ride the torso as it
+  // twists. They are what separate a football kit from a coloured leotard: a
+  // number alone reads as a training bib, and it is the *name* above it and the
+  // crest on the chest that make a shirt look like a shirt at any distance.
+  const decal = (tex, w, h, x, y, z, faceBack) => {
+    const mat = new THREE.MeshBasicMaterial({
+      map: tex,
+      transparent: true,
+      depthWrite: false,
+    });
+    const mesh = new THREE.Mesh(new THREE.PlaneGeometry(w, h), mat);
+    mesh.position.set(x, y, z);
+    if (faceBack) mesh.rotation.y = Math.PI;
+    mesh.renderOrder = 1;
+    skeleton.joints.spine.add(mesh);
+    return mat;
+  };
+
+  const decalFg = isKeeper ? '#f0f0f0' : colors.accent;
+  const backMat = decal(
+    makeBackDecal(player.number, player.surname, decalFg),
+    0.26 * S,
+    0.26 * S,
+    0,
+    DIM.torso * 0.56,
+    -0.128 * S,
+    true
+  );
+  const crestMat = decal(
+    crestTexture(teamCfg),
+    0.075 * S,
+    0.075 * S,
+    -0.055 * S,
+    DIM.torso * 0.66,
+    0.113 * S,
+    false
+  );
+  // Small chest number opposite the crest, as most kits carry.
+  const frontMat = decal(
+    makeNumberTexture(player.number, decalFg),
+    0.07 * S,
+    0.07 * S,
+    0.058 * S,
+    DIM.torso * 0.655,
+    0.113 * S,
+    false
+  );
 
   return {
     root,
     mesh,
-    materials: { ...M, number: numMat },
+    materials: { ...M, back: backMat, crest: crestMat, front: frontMat },
     joints: skeleton.joints,
     dims: DIM,
   };
@@ -711,8 +892,9 @@ export const CHARACTER_DIMS = DIM;
 /** Free every per-player material. Geometry is shared and intentionally kept. */
 export function disposePlayer(built) {
   for (const [key, m] of Object.entries(built.materials)) {
-    // Only the number texture is per-player; kit maps are cached per team.
-    if (key === 'number' && m.map) m.map.dispose();
+    // Back decal and chest number are per player; the crest and kit maps are
+    // cached per team and must outlive any single player.
+    if ((key === 'back' || key === 'front') && m.map) m.map.dispose();
     m.dispose();
   }
 }

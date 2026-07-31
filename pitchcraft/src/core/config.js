@@ -293,6 +293,19 @@ export const DIFFICULTY = {
   },
 };
 
+/**
+ * Squad surnames, one list per team.
+ *
+ * Invented, not borrowed: no real player's name appears here, in keeping with
+ * the rest of the project's original-content rule. Each list is given a faint
+ * regional flavour so a squad reads as a squad rather than as a random draw —
+ * Harbour Vale coastal-British, Ironmoor industrial-northern.
+ */
+export const SQUAD_NAMES = [
+  ['Marrow', 'Calder', 'Venn', 'Ashby', 'Rourke', 'Pell', 'Trevane', 'Locke', 'Danby', 'Wren', 'Sable'],
+  ['Kessel', 'Brandt', 'Fowley', 'Stroud', 'Ingram', 'Hask', 'Merrick', 'Dunlow', 'Varn', 'Colt', 'Reave'],
+];
+
 /** Strength the player's own team-mates always play at. */
 export const TEAMMATE_SKILL = DIFFICULTY.hard;
 

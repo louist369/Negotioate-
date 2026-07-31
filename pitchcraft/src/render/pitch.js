@@ -83,6 +83,8 @@ export function buildPitch(renderer) {
 
   group.add(buildMarkings());
 
+  group.add(buildCornerFlags());
+
   const goals = new THREE.Group();
   goals.name = 'goals';
   goals.add(buildGoal(renderer, 1));
@@ -90,6 +92,54 @@ export function buildPitch(renderer) {
   group.add(goals);
 
   return group;
+}
+
+/**
+ * Corner flags.
+ *
+ * Four posts and four pennants — about eighty triangles in total, and the
+ * cheapest single thing that makes a rendered pitch read as a football pitch
+ * rather than a green rectangle with lines on it. Real broadcast framing almost
+ * always has one in shot.
+ */
+function buildCornerFlags() {
+  const g = new THREE.Group();
+  g.name = 'cornerFlags';
+
+  const postH = 1.5;
+  const poleMat = new THREE.MeshStandardMaterial({ color: 0xf2f4f6, roughness: 0.5 });
+  const flagMat = new THREE.MeshStandardMaterial({
+    color: 0xffd23f,
+    roughness: 0.75,
+    side: THREE.DoubleSide,
+    emissive: 0x3a2c00,
+    emissiveIntensity: 0.4,
+  });
+
+  const pole = new THREE.CylinderGeometry(0.022, 0.026, postH, 6);
+  pole.translate(0, postH / 2, 0);
+  const pennant = new THREE.PlaneGeometry(0.34, 0.24);
+  pennant.translate(0.17, 0, 0);
+
+  for (const sx of [-1, 1]) {
+    for (const sz of [-1, 1]) {
+      const x = sx * HALF_LENGTH;
+      const z = sz * HALF_WIDTH;
+
+      const p = new THREE.Mesh(pole, poleMat);
+      p.position.set(x, 0, z);
+      p.castShadow = true;
+      g.add(p);
+
+      const f = new THREE.Mesh(pennant, flagMat);
+      f.position.set(x, postH - 0.17, z);
+      // Point each pennant away from the pitch so none of them overhang play.
+      f.rotation.y = Math.atan2(sx, sz) + Math.PI / 2;
+      f.castShadow = true;
+      g.add(f);
+    }
+  }
+  return g;
 }
 
 /** Every painted line, merged conceptually into one group of thin quads. */

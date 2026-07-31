@@ -434,6 +434,112 @@ export function makeShirtTexture(renderer, colors, { keeper = false, size = 256 
 }
 
 /**
+ * Shirt back: squad number with the player's surname arched above it, drawn as
+ * a decal rather than baked into the shirt texture so it can be per-player
+ * while the shirt itself stays per-team.
+ *
+ * A number alone reads as a training bib. The name above it is the single
+ * cheapest thing that makes a kit look like a real football kit.
+ */
+export function makeBackDecal(number, surname, fg = '#ffffff', size = 256) {
+  const c = canvas(size, size);
+  const ctx = c.getContext('2d');
+  ctx.clearRect(0, 0, size, size);
+
+  // Name, arched over the shoulders the way a real shirt carries it.
+  const letters = String(surname || '').toUpperCase().split('');
+  if (letters.length) {
+    ctx.save();
+    ctx.translate(size / 2, size * 0.86);
+    ctx.font = `bold ${size * 0.11}px system-ui, sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = fg;
+    // Arc radius grows with the name so long names do not wrap round the ribs.
+    const radius = size * (0.55 + letters.length * 0.035);
+    const step = Math.min(0.2, (size * 0.085) / radius);
+    letters.forEach((ch, i) => {
+      const a = (i - (letters.length - 1) / 2) * step;
+      ctx.save();
+      ctx.rotate(a);
+      ctx.translate(0, -radius);
+      ctx.fillText(ch, 0, 0);
+      ctx.restore();
+    });
+    ctx.restore();
+  }
+
+  // Number.
+  ctx.font = `bold ${size * 0.52}px system-ui, sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.lineWidth = size * 0.03;
+  ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+  ctx.strokeText(String(number), size / 2, size * 0.42);
+  ctx.fillStyle = fg;
+  ctx.fillText(String(number), size / 2, size * 0.42);
+
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.needsUpdate = true;
+  return tex;
+}
+
+/**
+ * Club crest: an original shield mark built from the team's own colours. No
+ * real club's badge appears anywhere in this project.
+ */
+export function makeCrestTexture(colors, initials, size = 128) {
+  const c = canvas(size, size);
+  const ctx = c.getContext('2d');
+  ctx.clearRect(0, 0, size, size);
+
+  const w = size * 0.72;
+  const h = size * 0.82;
+  const x = (size - w) / 2;
+  const y = (size - h) / 2;
+
+  // Shield outline.
+  ctx.beginPath();
+  ctx.moveTo(x, y);
+  ctx.lineTo(x + w, y);
+  ctx.lineTo(x + w, y + h * 0.52);
+  ctx.quadraticCurveTo(x + w, y + h * 0.9, x + w / 2, y + h);
+  ctx.quadraticCurveTo(x, y + h * 0.9, x, y + h * 0.52);
+  ctx.closePath();
+
+  ctx.fillStyle = colors.secondary;
+  ctx.fill();
+  ctx.lineWidth = size * 0.05;
+  ctx.strokeStyle = colors.accent;
+  ctx.stroke();
+
+  // A single chevron band, then the initials.
+  ctx.save();
+  ctx.clip();
+  ctx.fillStyle = colors.primary;
+  ctx.beginPath();
+  ctx.moveTo(x - 4, y + h * 0.3);
+  ctx.lineTo(x + w + 4, y + h * 0.16);
+  ctx.lineTo(x + w + 4, y + h * 0.42);
+  ctx.lineTo(x - 4, y + h * 0.56);
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+
+  ctx.font = `bold ${size * 0.3}px system-ui, sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = colors.accent;
+  ctx.fillText(initials, size / 2, y + h * 0.72);
+
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.needsUpdate = true;
+  return tex;
+}
+
+/**
  * Roughness map for kit fabric: polyester is glossy where it is stretched over
  * the chest and duller in the folds. Non-colour data, so no sRGB conversion.
  */
@@ -519,60 +625,107 @@ export function makeHeadTexture(renderer, size = 256) {
   const c = canvas(size, size);
   const ctx = c.getContext('2d');
 
-  // White base: the material colour multiplies through it.
+  // White base: the material colour multiplies through it, so one texture
+  // serves every skin tone in the squad.
   ctx.fillStyle = '#ffffff';
   ctx.fillRect(0, 0, size, size);
 
-  const faceU = 0.25 * size;
-  const px = (u) => faceU + u * size;
+  // Coordinates are given in *texture* space and converted here.
+  //
+  // A CanvasTexture is flipped on Y by default, so v = 0 samples the bottom
+  // row of the canvas. Drawing directly in canvas pixels put the mouth above
+  // the eyes and the brow shading down on the throat — which is exactly what
+  // the first version of this did. Working in v and converting once removes
+  // the whole class of mistake.
+  const py = (v) => (1 - v) * size;
+  // U runs around the head from +X; the player faces +Z, so the face centre is
+  // at U = 0.25. V is the head section's own parameter: the jaw sits at 0.22
+  // and the crown at 1.0, matching the ring heights the geometry is built at.
+  const px = (u) => (0.25 + u) * size;
 
-  // Slight shading under the jaw and around the temples so the head is not a
-  // uniformly lit egg.
-  const shade = ctx.createLinearGradient(0, size * 0.34, 0, size * 0.52);
-  shade.addColorStop(0, 'rgba(120,96,80,0.45)');
-  shade.addColorStop(1, 'rgba(255,255,255,0)');
-  ctx.fillStyle = shade;
-  ctx.fillRect(0, size * 0.34, size, size * 0.2);
+  const V = { chin: 0.3, mouth: 0.38, nose: 0.53, eyes: 0.63, brow: 0.7, hairline: 0.78 };
 
-  // Eyes. Two dark ovals with a brow above each, at the height a brow sits on a
-  // skull — a little above the vertical middle of the head section.
-  const eyeY = size * 0.63;
-  for (const dx of [-0.055, 0.055]) {
-    ctx.fillStyle = '#f4f1ec';
+  // Soft shading under the jaw so the head is not a uniformly lit egg.
+  const jaw = ctx.createLinearGradient(0, py(0.34), 0, py(0.2));
+  jaw.addColorStop(0, 'rgba(255,255,255,0)');
+  jaw.addColorStop(1, 'rgba(140,116,96,0.28)');
+  ctx.fillStyle = jaw;
+  ctx.fillRect(0, py(0.34), size, py(0.2) - py(0.34));
+
+  // Eye sockets: a faint darkening the eyes sit inside, which is most of what
+  // reads as an eye at any distance.
+  for (const du of [-0.055, 0.055]) {
+    const g = ctx.createRadialGradient(px(du), py(V.eyes), 0, px(du), py(V.eyes), size * 0.055);
+    g.addColorStop(0, 'rgba(120,96,80,0.45)');
+    g.addColorStop(1, 'rgba(120,96,80,0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(px(du) - size * 0.06, py(V.eyes) - size * 0.06, size * 0.12, size * 0.12);
+  }
+
+  for (const du of [-0.055, 0.055]) {
+    // Sclera, then iris, then pupil.
+    ctx.fillStyle = '#f2efe9';
     ctx.beginPath();
-    ctx.ellipse(px(dx), eyeY, size * 0.024, size * 0.015, 0, 0, Math.PI * 2);
+    ctx.ellipse(px(du), py(V.eyes), size * 0.026, size * 0.014, 0, 0, Math.PI * 2);
     ctx.fill();
-    ctx.fillStyle = '#2b1f18';
+    ctx.fillStyle = '#4a3524';
     ctx.beginPath();
-    ctx.ellipse(px(dx), eyeY, size * 0.012, size * 0.013, 0, 0, Math.PI * 2);
+    ctx.ellipse(px(du), py(V.eyes), size * 0.013, size * 0.013, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#171009';
+    ctx.beginPath();
+    ctx.ellipse(px(du), py(V.eyes), size * 0.006, size * 0.007, 0, 0, Math.PI * 2);
     ctx.fill();
 
-    // Brow.
-    ctx.strokeStyle = 'rgba(60,42,30,0.75)';
-    ctx.lineWidth = size * 0.016;
+    // Upper lid shadow — without it the eye reads as a staring bead.
+    ctx.strokeStyle = 'rgba(70,52,38,0.7)';
+    ctx.lineWidth = size * 0.008;
+    ctx.beginPath();
+    ctx.moveTo(px(du - 0.028), py(V.eyes + 0.006));
+    ctx.lineTo(px(du + 0.028), py(V.eyes + 0.006));
+    ctx.stroke();
+
+    // Brow, angled slightly down toward the nose.
+    ctx.strokeStyle = 'rgba(56,40,28,0.8)';
+    ctx.lineWidth = size * 0.017;
     ctx.lineCap = 'round';
     ctx.beginPath();
-    ctx.moveTo(px(dx - 0.032), eyeY - size * 0.042);
-    ctx.lineTo(px(dx + 0.03), eyeY - size * 0.05);
+    const inner = du < 0 ? du + 0.03 : du - 0.03;
+    const outer = du < 0 ? du - 0.032 : du + 0.032;
+    ctx.moveTo(px(inner), py(V.brow - 0.012));
+    ctx.lineTo(px(outer), py(V.brow));
     ctx.stroke();
   }
 
-  // Mouth: a soft line, not a grin.
-  ctx.strokeStyle = 'rgba(120,72,64,0.6)';
-  ctx.lineWidth = size * 0.012;
+  // Nostril shadows either side of the modelled nose.
+  ctx.fillStyle = 'rgba(80,56,42,0.55)';
+  for (const du of [-0.019, 0.019]) {
+    ctx.beginPath();
+    ctx.ellipse(px(du), py(V.nose - 0.045), size * 0.008, size * 0.006, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // Mouth: a closed line with a hint of lower lip, not a grin.
+  ctx.strokeStyle = 'rgba(112,66,58,0.75)';
+  ctx.lineWidth = size * 0.011;
   ctx.beginPath();
-  ctx.moveTo(px(-0.03), size * 0.5);
-  ctx.lineTo(px(0.03), size * 0.5);
+  ctx.moveTo(px(-0.033), py(V.mouth));
+  ctx.quadraticCurveTo(px(0), py(V.mouth - 0.006), px(0.033), py(V.mouth));
+  ctx.stroke();
+  ctx.strokeStyle = 'rgba(196,148,136,0.4)';
+  ctx.lineWidth = size * 0.014;
+  ctx.beginPath();
+  ctx.moveTo(px(-0.024), py(V.mouth - 0.018));
+  ctx.lineTo(px(0.024), py(V.mouth - 0.018));
   ctx.stroke();
 
-  // No hairline is painted here: the hair mesh covers the crown, and drawing
-  // one as well stacked two dark masses on top of each other and turned the
-  // head into a helmet. Just a soft shadow where the scalp meets the brow.
-  const brow = ctx.createLinearGradient(0, size * 0.78, 0, size * 0.86);
-  brow.addColorStop(0, 'rgba(255,255,255,0)');
-  brow.addColorStop(1, 'rgba(150,124,102,0.5)');
-  ctx.fillStyle = brow;
-  ctx.fillRect(0, size * 0.78, size, size * 0.1);
+  // Sideburn / hairline shading where the scalp cap meets the temple. The cap
+  // itself is geometry — this only softens the seam.
+  const edge = ctx.createLinearGradient(0, py(V.hairline - 0.05), 0, py(V.hairline + 0.03));
+  edge.addColorStop(0, 'rgba(255,255,255,0)');
+  edge.addColorStop(1, 'rgba(126,102,82,0.55)');
+  ctx.fillStyle = edge;
+  ctx.fillRect(0, py(V.hairline + 0.03), size, py(V.hairline - 0.05) - py(V.hairline + 0.03));
 
   return finish(c, { renderer, aniso: 4 });
 }
