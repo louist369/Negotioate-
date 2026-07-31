@@ -112,7 +112,11 @@ export class GameScene {
     const hemi = new THREE.HemisphereLight(0x9fc4ff, 0x2b4a25, 0.16);
     this.scene.add(hemi);
 
-    const key = new THREE.DirectionalLight(0xfff2dc, 3.1);
+    // 3.1 was tuned to make shadows read on the turf, but it clips bare skin
+    // to white in close-up — a lit forearm against a shadowed shirt stopped
+    // reading as an arm and started reading as a flat panel. Pulled back, with
+    // the bounce and fill raised so the turf shadows keep their contrast.
+    const key = new THREE.DirectionalLight(0xfff2dc, 2.55);
     key.position.set(38, 62, 30);
     key.castShadow = true;
     const shadowRes =
@@ -136,7 +140,7 @@ export class GameScene {
 
     // Opposing fill so players aren't black on the shadow side — enough to keep
     // the shadow side readable, not enough to erase the shadow.
-    const fill = new THREE.DirectionalLight(0xbcd6ff, 0.34);
+    const fill = new THREE.DirectionalLight(0xbcd6ff, 0.4);
     fill.position.set(-40, 45, -28);
     this.scene.add(fill);
 
@@ -147,7 +151,7 @@ export class GameScene {
     // A real floodlit pitch is a huge bright reflector, and this is the term
     // that makes a face readable in close-up rather than a lit forehead over a
     // black hole.
-    const bounce = new THREE.DirectionalLight(0xa8c89a, 0.42);
+    const bounce = new THREE.DirectionalLight(0xa8c89a, 0.5);
     bounce.position.set(6, -14, 34);
     this.scene.add(bounce);
 

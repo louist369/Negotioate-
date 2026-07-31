@@ -214,11 +214,11 @@ function band(h, centre, width) {
   return Math.exp(-d * d);
 }
 
-function headShape(v, R) {
-  // V runs 0.2 at the jaw to 1.0 at the crown; h is 0 to 1 over the same span.
-  const h = (v - 0.2) / 0.8;
-  // Neck rings stay plain — a nose on the throat is not an improvement.
-  if (h < 0) return null;
+function headShape(h, HEAD_H, S) {
+  // `h` is TRUE height fraction: 0 at the chin, 1 at the crown. Feature heights
+  // below are human canon — eye line at the vertical midpoint, brow at 0.565,
+  // mouth at 0.19 — which is only meaningful because h is now real height.
+  const R = HEAD_H;
 
   return (a) => {
     let dz = 0;
@@ -228,62 +228,112 @@ function headShape(v, R) {
 
     const front = lobe(a, Math.PI / 2, 1.1);
 
-    // Brow ridge: a shelf across the front, heavier at the outer edges where a
-    // real supraorbital ridge is strongest.
-    dz += R * 0.075 * lobe(a, Math.PI / 2, 0.95) * band(h, 0.62, 0.075);
-    dz += R * 0.05 * (lobe(a, 1.05, 0.3) + lobe(a, 2.09, 0.3)) * band(h, 0.62, 0.07);
+    // --- chin and mandible -------------------------------------------------
+    // The lathe's lowest ring is the jawline. A chin is a *front* feature, so
+    // it is pulled down and forward out of that ring rather than being a ring
+    // of its own — a horizontal ring can never be a chin.
+    const low = band(h, 0.19, 0.1);
+    dy -= R * 0.085 * low * lobe(a, Math.PI / 2, 0.9);
+    dz += R * 0.045 * low * lobe(a, Math.PI / 2, 0.65);
+    // Mandible angle: the jaw corner, which is a real landmark and not a curve.
+    const jawSide = lobe(a, 0.72, 0.3) + lobe(a, 2.42, 0.3);
+    scale += 0.05 * jawSide * band(h, 0.26, 0.08);
+    dy -= R * 0.028 * jawSide * band(h, 0.22, 0.08);
 
-    // Eye sockets set back under the brow — this is what gives the eyes depth
-    // rather than leaving them painted on a smooth curve.
-    dz -= R * 0.055 * (lobe(a, 1.28, 0.26) + lobe(a, 1.86, 0.26)) * band(h, 0.54, 0.055);
+    // --- brow --------------------------------------------------------------
+    dz += R * 0.055 * lobe(a, Math.PI / 2, 0.95) * band(h, 0.565, 0.055);
+    dz += R * 0.03 * (lobe(a, 1.05, 0.3) + lobe(a, 2.09, 0.3)) * band(h, 0.565, 0.05);
 
-    // Nose: bridge, then a tip that projects, then the base tucking back under.
-    //
-    // These three bands overlap, and at h = 0.4 they previously summed to
-    // 0.46 R — a 5.6cm projection against a real nose's 2.5cm. Magnitudes are
-    // set so the *sum* lands near 0.22 R, not each term individually.
-    dz += R * 0.07 * lobe(a, Math.PI / 2, 0.26) * band(h, 0.55, 0.075);
-    dz += R * 0.16 * lobe(a, Math.PI / 2, 0.22) * band(h, 0.43, 0.055);
-    dz += R * 0.09 * lobe(a, Math.PI / 2, 0.34) * band(h, 0.38, 0.045);
-    // Nostril wings either side of the tip.
-    dx += R * 0.035 * (lobe(a, 1.36, 0.16) - lobe(a, 1.78, 0.16)) * band(h, 0.39, 0.035);
+    // --- eye sockets -------------------------------------------------------
+    // Set back under the brow. A real orbit is 12-15mm deep; 6.6mm read as
+    // painted-on eyes sitting on a smooth curve.
+    dz -= R * 0.055 * (lobe(a, 1.2252, 0.24) + lobe(a, 1.9164, 0.24)) * band(h, 0.5, 0.055);
 
-    // Lips: the upper sits back, the lower proud, with a shadow between.
-    dz += R * 0.055 * lobe(a, Math.PI / 2, 0.44) * band(h, 0.245, 0.03);
-    dz += R * 0.07 * lobe(a, Math.PI / 2, 0.4) * band(h, 0.2, 0.028);
-    dz -= R * 0.035 * lobe(a, Math.PI / 2, 0.5) * band(h, 0.222, 0.016);
-    dz -= R * 0.03 * lobe(a, Math.PI / 2, 0.5) * band(h, 0.155, 0.028);
+    // --- nose --------------------------------------------------------------
+    // These bands overlap, so the magnitudes are set so their SUM is a real
+    // nose (~2.5cm) rather than each being one.
+    dz += R * 0.05 * lobe(a, Math.PI / 2, 0.26) * band(h, 0.44, 0.07);
+    dz += R * 0.1 * lobe(a, Math.PI / 2, 0.2) * band(h, 0.33, 0.05);
+    dz += R * 0.06 * lobe(a, Math.PI / 2, 0.3) * band(h, 0.28, 0.04);
+    dx += R * 0.03 * (lobe(a, 1.34, 0.15) - lobe(a, 1.8, 0.15)) * band(h, 0.28, 0.03);
 
-    // Chin, philtrum groove, and the jaw pulling in beneath.
-    dz += R * 0.09 * lobe(a, Math.PI / 2, 0.55) * band(h, 0.09, 0.075);
-    dz -= R * 0.022 * lobe(a, Math.PI / 2, 0.14) * band(h, 0.28, 0.03);
-    scale -= 0.11 * band(h, 0.0, 0.13);
+    // --- lips --------------------------------------------------------------
+    dz += R * 0.04 * lobe(a, Math.PI / 2, 0.42) * band(h, 0.215, 0.025);
+    dz += R * 0.05 * lobe(a, Math.PI / 2, 0.38) * band(h, 0.17, 0.024);
+    dz -= R * 0.025 * lobe(a, Math.PI / 2, 0.48) * band(h, 0.192, 0.013);
+    // Philtrum groove.
+    dz -= R * 0.016 * lobe(a, Math.PI / 2, 0.12) * band(h, 0.245, 0.025);
 
-    // Cheekbones, and the hollow under them.
-    const side = lobe(a, 1.0, 0.42) + lobe(a, 2.14, 0.42);
-    scale += 0.055 * side * band(h, 0.5, 0.09);
-    scale -= 0.035 * side * band(h, 0.3, 0.08);
+    // --- cheeks ------------------------------------------------------------
+    const side = lobe(a, 1.0, 0.4) + lobe(a, 2.14, 0.4);
+    scale += 0.045 * side * band(h, 0.44, 0.08);
+    scale -= 0.03 * side * band(h, 0.3, 0.07);
 
-    // Jaw corner: a real mandible has an angle, not a smooth arc.
-    const jawSide = lobe(a, 0.72, 0.34) + lobe(a, 2.42, 0.34);
-    scale += 0.045 * jawSide * band(h, 0.14, 0.07);
-
-    // Ears — tabs standing off the side of the skull, tilted back slightly.
-    const earL = lobe(a, 0.1, 0.2) * band(h, 0.44, 0.085);
-    const earR = lobe(a, Math.PI - 0.1, 0.2) * band(h, 0.44, 0.085);
-    dx += R * 0.075 * (earL - earR);
-    dz -= R * 0.05 * (earL + earR);
-
-    // Occiput: the skull carries further back than it does forward.
-    dz -= R * 0.11 * lobe(a, -Math.PI / 2, 1.0) * band(h, 0.6, 0.28);
-    // Nape hollow beneath it.
-    dz += R * 0.05 * lobe(a, -Math.PI / 2, 0.8) * band(h, 0.12, 0.1);
+    // --- occiput and nape --------------------------------------------------
+    dz -= R * 0.03 * lobe(a, -Math.PI / 2, 1.0) * band(h, 0.62, 0.22);
+    dz += R * 0.04 * lobe(a, -Math.PI / 2, 0.8) * band(h, 0.24, 0.1);
 
     // Temples flatten rather than bulging.
-    scale -= 0.03 * front * band(h, 0.72, 0.08);
+    scale -= 0.025 * front * band(h, 0.66, 0.07);
 
     return { dx, dy, dz, scale };
   };
+}
+
+/**
+ * Ears.
+ *
+ * A 9mm bulge on the UV seam is not an ear, and the ear is one of the strongest
+ * reads on a head in three-quarter and profile — both reference frames turn on
+ * it. This builds them as their own small lathes: 6.2 x 3.4cm, standing 20mm
+ * off the skull, tilted back 12 degrees, spanning h 0.30 to 0.565.
+ */
+function addEars(m, { chinY, HEAD_H, S, widthAt }) {
+  // `axis: 'x'` sweeps each ring in the YZ plane and steps successive rings
+  // along X — so the rings must march *outward from the skull*, not down the
+  // side of it. The first version stepped them down in Y, which collapsed the
+  // ear into a flat ribbon at constant x and made it invisible.
+  const midH = 0.43;
+  const earCy = chinY + midH * HEAD_H;
+  const skullX = widthAt(midH);
+
+  for (const sideSign of [-1, 1]) {
+    const rings = [];
+    const STEPS = 4;
+    for (let i = 0; i <= STEPS; i++) {
+      const t = i / STEPS;
+      // Projection: 20mm off the skull, starting just inside it so the root
+      // is buried and there is no visible join.
+      const x = sideSign * (skullX * 0.94 + t * 0.021 * S);
+      // 6.2 x 3.4cm, shrinking toward the outer rim.
+      const tall = (0.031 - t * t * 0.009) * S;
+      const deep = (0.017 - t * t * 0.005) * S;
+      rings.push({
+        p: [x, earCy, -0.013 * S - t * 0.005 * S],
+        rx: tall,
+        rz: deep,
+        axis: 'x',
+        w: [['head', 1]],
+        slot: SLOT.face,
+        v: 0.42,
+        radial: 10,
+        // Lobe at the bottom, helix flaring at the top-back: an ear is not an
+        // ellipse, and the asymmetry is most of what reads as one.
+        shape: (a) => ({
+          dy: -0.004 * S * Math.max(0, -Math.sin(a)),
+          dz: -0.004 * S * Math.max(0, Math.sin(a)) * (1 - t),
+        }),
+      });
+    }
+    const end = m.lathe(rings);
+    m.cap(
+      end,
+      [sideSign * (skullX * 0.94 + 0.023 * S), earCy, -0.016 * S],
+      SLOT.face,
+      [['head', 1]],
+      10
+    );
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -331,7 +381,11 @@ class MeshBuilder {
     const n = r.radial || RADIAL;
     for (let i = 0; i <= n; i++) {
       // The seam vertex is duplicated so U can run 0..1 without wrapping.
-      const a = (i / n) * Math.PI * 2;
+      // The seam duplicates a vertex, and computeVertexNormals() averages each
+      // copy over only its own half of the surrounding faces — so the seam is a
+      // visible lighting crease. `seam` rotates where it falls; the head puts it
+      // at the occiput, under the hair, instead of down the side of the face.
+      const a = (i / n) * Math.PI * 2 + (r.seam || 0);
       const c = Math.cos(a);
       const s = Math.sin(a);
       const mod = r.shape ? r.shape(a) : null;
@@ -340,6 +394,7 @@ class MeshBuilder {
       const dy = mod && mod.dy ? mod.dy : 0;
       const dz = mod && mod.dz ? mod.dz : 0;
       if (axis === 'y') this.pos.push(x + c * r.rx * k + dx, y + dy, z + s * r.rz * k + dz);
+      else if (axis === 'x') this.pos.push(x + dx, y + c * r.rx * k + dy, z + s * r.rz * k + dz);
       else this.pos.push(x + c * r.rx * k + dx, y + s * r.rz * k + dy, z + dz);
       this.uv.push(i / n, r.v ?? 0);
 
@@ -470,7 +525,7 @@ function bodyGeometry(boneIndex) {
   const crotchY = DIM.hipY - 0.115 * S;
   const neckY = DIM.hipY + DIM.torso;
   const torsoRings = [];
-  const TORSO_STEPS = 16;
+  const TORSO_STEPS = 22;
   for (let i = 0; i <= TORSO_STEPS; i++) {
     const t = i / TORSO_STEPS;
     const y = lerp(crotchY, neckY, t);
@@ -505,7 +560,49 @@ function bodyGeometry(boneIndex) {
     // to collar (1), so V is mapped over the shirt portion only.
     const slot = t < 0.34 ? SLOT.shorts : SLOT.shirt;
     const v = t < 0.34 ? 0 : (t - 0.34) / 0.66;
-    torsoRings.push({ p: [0, y, 0], rx, rz, w, slot, v });
+    torsoRings.push({
+      p: [0, y, 0],
+      rx,
+      rz,
+      w,
+      slot,
+      v,
+      // Torso form.
+      //
+      // The chest is the largest single area of a player on screen, and a
+      // smooth tapered tube is the most obviously synthetic thing about it —
+      // a shirt drapes over a ribcage, not a barrel. None of this is visible
+      // as anatomy under a kit; what it does is give the shirt somewhere for
+      // light to fall off, which is what makes fabric read as fabric.
+      shape: (a) => {
+        let dz = 0;
+        let dx = 0;
+        let scale = 1;
+
+        // Pectorals: two shallow bulges on the upper chest with the sternum
+        // channel between them.
+        const pec = (lobe(a, 1.16, 0.34) + lobe(a, 1.98, 0.34)) * band(t, 0.7, 0.09);
+        dz += 0.02 * S * pec;
+        dz -= 0.011 * S * lobe(a, Math.PI / 2, 0.16) * band(t, 0.68, 0.11);
+
+        // Latissimus flare: the back widens toward the armpit.
+        const lat = (lobe(a, 0.35, 0.5) + lobe(a, 2.79, 0.5)) * band(t, 0.66, 0.13);
+        scale += 0.045 * lat;
+
+        // Spine groove and the shoulder blades either side of it.
+        dz += 0.014 * S * lobe(a, -Math.PI / 2, 0.14) * band(t, 0.66, 0.2);
+        dz -= 0.012 * S * (lobe(a, -1.24, 0.3) + lobe(a, -1.9, 0.3)) * band(t, 0.72, 0.08);
+
+        // Abdomen: a soft centre line and the slight tuck above the hips.
+        dz -= 0.007 * S * lobe(a, Math.PI / 2, 0.2) * band(t, 0.5, 0.12);
+        scale -= 0.02 * band(t, 0.44, 0.08);
+
+        // Iliac flare where the pelvis widens under the waist.
+        scale += 0.03 * band(t, 0.24, 0.07);
+
+        return { dx, dz, scale };
+      },
+    });
   }
   m.lathe(torsoRings);
   // No cap at the top: the neck section below starts at the same radius and
@@ -516,72 +613,110 @@ function bodyGeometry(boneIndex) {
 
   // --- neck and head -------------------------------------------------------
   //
-  // The head is a real ellipsoid swept by polar angle, not a radius curve
-  // sampled against a linear height. The previous version lerped y linearly
-  // while driving the radius with a sine, which is only a sphere if the two
-  // parametrisations agree — they did not, and the result was a diamond.
+  // The head is parametrised by *true height fraction* h: 0 at the chin,
+  // 1 at the crown.
   //
-  // phi runs 0 (bottom pole) to PI (crown). The neck meets the skull at PHI0,
-  // chosen so the first head ring is exactly as wide as the neck it grows out
-  // of, which is what makes the join seamless rather than a step.
-  const neckTop = DIM.hipY + DIM.torso + DIM.neck;
-  const R = DIM.headR * 1.05;
-  const HEAD_X = 0.64; // half-width  = 0.64 R  -> ~15.5cm across
-  const HEAD_Z = 0.85; // half-depth  = 0.85 R  -> ~19cm front to back
-  const neckR = 0.062 * S;
-  const PHI0 = Math.asin(Math.min(1, neckR / (R * HEAD_X)));
-  const headCentre = neckTop + R * Math.cos(PHI0);
-  // Recorded for hair.js, in head-bone local space (the head bone sits at
-  // neckTop), so hairstyles sit on the skull this actually built.
-  SKULL = { cy: headCentre - neckTop, R, x: HEAD_X, z: HEAD_Z };
+  // It previously used the polar angle of an ellipsoid sweep as if it were
+  // height. It is not — for y = cy - R*cos(phi), dY/dphi vanishes at the poles,
+  // so a feature placed at "h = 0.54" actually landed at 70% of head height.
+  // Measured against the code as it stood: eye line 0.70 (human 0.50), brow
+  // 0.80 (0.565), nose tip 0.565 (0.30). The braincase above the brow came out
+  // at 21% of head height against a human 43%. That single mis-assumption
+  // produced the missing forehead, the missing chin, the high eyes and the
+  // egg-shaped skull simultaneously.
+  //
+  // Breadth and depth are now explicit profiles keyed on h as well. A sin(phi)
+  // profile puts the widest ring at 37% of head height — nose-base level —
+  // where a human's widest point is the parietal eminence at ~68%.
+  const HEAD_H = 0.22 * S;      // chin to crown
+  const CROWN_Y = PLAYER.height * 0.99;
+  const CHIN_Y = CROWN_Y - HEAD_H;
+  // The lathe's lowest ring is the jawline; the chin is sculpted down from it,
+  // because a chin is a front feature and a horizontal ring cannot be one.
+  const JAW_H = 0.18;
 
-  // A face needs far more angular resolution than a shin, and the neck rings
-  // must share it or the lathe cannot stitch them to the skull.
+  /** Piecewise-linear profile lookup. */
+  const profile = (table, h) => {
+    for (let i = 1; i < table.length; i++) {
+      if (h <= table[i][0]) {
+        const [h0, v0] = table[i - 1];
+        const [h1, v1] = table[i];
+        return lerp(v0, v1, (h - h0) / (h1 - h0));
+      }
+    }
+    return table[table.length - 1][1];
+  };
+  // Half-widths and half-depths in metres, from anthropometric proportions for
+  // a 1.82m adult: 15.2cm max breadth at the parietals, 19cm max depth.
+  const HEAD_W = [
+    [0.0, 0.039], [0.18, 0.056], [0.3, 0.061], [0.5, 0.068],
+    [0.68, 0.076], [0.86, 0.063], [1.0, 0.004],
+  ];
+  const HEAD_D = [
+    [0.0, 0.048], [0.3, 0.0775], [0.58, 0.095], [0.82, 0.085], [1.0, 0.004],
+  ];
+
+  // Seam at the occiput so its normal crease hides under hair.
+  const SEAM = -Math.PI / 2;
   const FACE_RADIAL = 28;
   const headRings = [];
-  // Neck: a short column from the shoulders up to the jaw.
-  for (let i = 0; i <= 2; i++) {
-    const t = i / 2;
+
+  // Neck: a column from the shoulders up into the jaw.
+  const neckR = 0.056 * S;
+  const jawRingY = CHIN_Y + JAW_H * HEAD_H;
+  for (let i = 0; i <= 3; i++) {
+    const t = i / 3;
     headRings.push({
-      p: [0, lerp(DIM.hipY + DIM.torso - 0.015 * S, neckTop, t), 0],
-      rx: lerp(0.066 * S, neckR, t),
-      rz: lerp(0.07 * S, neckR, t),
-      w: t < 0.5 ? [['neck', 1]] : [['neck', 0.6], ['head', 0.4]],
+      p: [0, lerp(DIM.hipY + DIM.torso - 0.015 * S, jawRingY, t), -0.012 * S * t],
+      rx: lerp(0.07 * S, neckR, t),
+      rz: lerp(0.075 * S, neckR * 1.06, t),
+      w: t < 0.4 ? [['neck', 1]] : [['neck', 1 - (t - 0.4) / 0.6], ['head', (t - 0.4) / 0.6]],
       slot: SLOT.face,
-      v: lerp(0.02, 0.2, t),
+      v: 0.02,
       radial: FACE_RADIAL,
+      seam: SEAM,
     });
   }
-  // Skull.
-  // Vertical resolution matters too — lips, nostrils and a lid crease all sit
-  // within about a fifth of the head's height.
-  const HEAD_STEPS = 26;
+
+  const HEAD_STEPS = 24;
   for (let i = 0; i <= HEAD_STEPS; i++) {
     const k = i / HEAD_STEPS;
-    const phi = lerp(PHI0, Math.PI, k);
-    const y = headCentre - R * Math.cos(phi);
-    const rx = R * HEAD_X * Math.sin(phi);
-    const rz = R * HEAD_Z * Math.sin(phi);
-    // V is the face map's own axis: 0.2 at the jaw, 1.0 at the crown, so the
-    // painted eyes land on the modelled brow rather than beside it.
-    const v = lerp(0.2, 1, k);
+    const h = lerp(JAW_H, 1, k);
+    const y = CHIN_Y + h * HEAD_H;
+    // The face carries further forward of the neck axis than the occiput
+    // carries back, so the whole ellipse is offset forward.
+    const rx = Math.max(profile(HEAD_W, h) * S, 0.003 * S);
+    const rz = Math.max(profile(HEAD_D, h) * S, 0.003 * S);
     headRings.push({
-      p: [0, y, 0],
-      rx: Math.max(rx, 0.004 * S),
-      rz: Math.max(rz, 0.004 * S),
-      w: k < 0.12 ? [['neck', 0.4], ['head', 0.6]] : [['head', 1]],
+      p: [0, y, 0.012 * S],
+      rx,
+      rz,
+      w: k < 0.1 ? [['neck', 0.35], ['head', 0.65]] : [['head', 1]],
       slot: SLOT.face,
-      v,
+      // V is the head's true height fraction, so the painted eyes land on the
+      // modelled brow rather than 20% of a head above it.
+      v: h,
       radial: FACE_RADIAL,
-      shape: headShape(v, R),
+      seam: SEAM,
+      shape: headShape(h, HEAD_H, S),
     });
   }
   m.lathe(headRings);
-
-  // Hair is NOT part of this geometry. It is a per-player mesh parented to the
-  // head bone (see hair.js): baking it in here gave all fourteen players on the
-  // pitch the same head, which is the fastest way to make a squad read as
-  // fourteen copies rather than fourteen people.
+  addEars(m, {
+    chinY: CHIN_Y,
+    HEAD_H,
+    S,
+    widthAt: (hh) => profile(HEAD_W, hh) * S,
+  });
+  // Record for hair.js, in head-bone local space (the head bone sits at neckTop).
+  const neckTop = DIM.hipY + DIM.torso + DIM.neck;
+  SKULL = {
+    chin: CHIN_Y - neckTop,
+    height: HEAD_H,
+    profileW: HEAD_W,
+    profileD: HEAD_D,
+    S,
+  };
 
   // --- arms ----------------------------------------------------------------
   for (const key of ['armL', 'armR']) {
@@ -757,7 +892,12 @@ function bodyGeometry(boneIndex) {
     // A football boot is a distinct shape and worth the handful of extra rings:
     // a raised heel counter at the back, an instep that dips over the laces,
     // and a low flat toe box. A plain tapered tube reads as a slipper.
-    const footY = ankle[1] - DIM.footH * 0.55;
+    // The sole must sit ON the turf. It was at y = -0.042 — every boot in every
+    // frame was 4.2cm underground, which is a gameplay-distance fault, not a
+    // close-up one. `footY` is now derived from the deepest point of the ring
+    // profile so the sole lands at y = 0.
+    const SOLE_DROP = 0.052 * S;
+    const footY = SOLE_DROP - 0.014 * S;
     const FOOT_STEPS = 10;
     for (let i = 0; i <= FOOT_STEPS; i++) {
       const t = i / FOOT_STEPS;
@@ -776,7 +916,14 @@ function bodyGeometry(boneIndex) {
         slot: SLOT.boot,
         v: 0,
         // Flatten the underside: a sole is flat, not a cylinder bottom.
-        shape: (a) => ({ dy: Math.max(0, -Math.sin(a)) * 0.011 * S }),
+        // Flatten the underside: a sole is flat, not a cylinder bottom. Clamped
+        // against world y so the flat runs true whatever the ring's height is.
+        shape: (a) => {
+          const sn = Math.sin(a);
+          if (sn >= 0) return {};
+          const yAt = footY + (1 - t) * 0.014 * S + sn * Math.max(h, 0.012 * S);
+          return { dy: Math.max(0, -yAt) };
+        },
       });
     }
     const footEnd = m.lathe(rings);
@@ -882,12 +1029,14 @@ export function createPlayer(player, teamCfg, opts = {}) {
     // catch a hard highlight while the jaw stays dull. A single roughness value
     // gives the whole head one flat sheen, which is most of what separates a CG
     // head from a photographed one.
-    skin: mat(skin, 0.52, { roughnessMap: skinRoughness() }),
+    skin: mat(skin, 0.62, { roughnessMap: skinRoughness() }),
     boot: mat(isKeeper ? '#141414' : colors.accent, 0.24, { metalness: 0.12 }),
-    hair: mat(hairCol, 0.88),
+    // Double-sided: a hair shell is an open surface and a strongly slanted
+    // hairline can flip a face's winding, which shows as a hole in the cap.
+    hair: mat(hairCol, 0.88, { side: THREE.DoubleSide }),
     // The head map is white-based, so this material's colour still carries the
     // player's skin tone — one shared texture serves every skin in the squad.
-    face: mat(skin, 0.52, { map: headTexture(), roughnessMap: skinRoughness() }),
+    face: mat(skin, 0.58, { map: headTexture(), roughnessMap: skinRoughness() }),
   };
 
   // Order must match SLOT.

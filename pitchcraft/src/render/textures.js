@@ -484,12 +484,15 @@ export function makeShirtTexture(renderer, colors, { keeper = false, size = 512 
 
   // Soft vertical shading so the shirt has a little form of its own — the
   // sides fall away from the light even before the mesh normals do.
+  // Kept light: the mesh now carries real chest and lat form (see the torso
+  // shape function in character.js), so painting heavy shading on top of it
+  // double-darkens the shirt and buries the team colour.
   const shade = ctx.createLinearGradient(0, 0, size, 0);
-  shade.addColorStop(0, 'rgba(0,0,0,0.22)');
-  shade.addColorStop(0.25, 'rgba(255,255,255,0.06)');
-  shade.addColorStop(0.5, 'rgba(0,0,0,0.2)');
-  shade.addColorStop(0.75, 'rgba(255,255,255,0.04)');
-  shade.addColorStop(1, 'rgba(0,0,0,0.22)');
+  shade.addColorStop(0, 'rgba(0,0,0,0.1)');
+  shade.addColorStop(0.25, 'rgba(255,255,255,0.07)');
+  shade.addColorStop(0.5, 'rgba(0,0,0,0.09)');
+  shade.addColorStop(0.75, 'rgba(255,255,255,0.05)');
+  shade.addColorStop(1, 'rgba(0,0,0,0.1)');
   ctx.fillStyle = shade;
   ctx.fillRect(0, 0, size, size);
 
@@ -705,9 +708,9 @@ export function makeHeadTexture(renderer, size = 512) {
   // U runs around the head from +X; the player faces +Z, so the face centre is
   // at U = 0.25. V is the head section's own parameter: the jaw sits at 0.2
   // and the crown at 1.0, matching the ring heights the geometry is built at.
-  const px = (u) => (0.25 + u) * size;
+  const px = (u) => (0.5 + u) * size;
 
-  const V = { chin: 0.3, mouth: 0.38, nose: 0.53, eyes: 0.63, brow: 0.7, hairline: 0.78 };
+  const V = { chin: 0.07, mouth: 0.19, nose: 0.3, eyes: 0.5, brow: 0.565, hairline: 0.72 };
 
   const soft = (u, v, r, color, alpha = 1) => {
     const g = ctx.createRadialGradient(px(u), py(v), 0, px(u), py(v), r);
@@ -722,13 +725,13 @@ export function makeHeadTexture(renderer, size = 512) {
   // eye sockets, the sides of the nose, under the cheekbones, under the lip
   // and along the jaw. This is what stops a head reading as a smooth solid,
   // and it matters far more than any single feature.
-  soft(0, V.chin - 0.06, size * 0.13, 'rgba(126,96,76,ALPHA)', 0.4); // under jaw
+  soft(0, V.chin - 0.03, size * 0.12, 'rgba(126,96,76,ALPHA)', 0.35); // under jaw
   soft(-0.075, V.eyes - 0.02, size * 0.075, 'rgba(112,84,66,ALPHA)', 0.42);
   soft(0.075, V.eyes - 0.02, size * 0.075, 'rgba(112,84,66,ALPHA)', 0.42);
   soft(-0.038, V.nose - 0.02, size * 0.05, 'rgba(120,90,70,ALPHA)', 0.34); // nose sides
   soft(0.038, V.nose - 0.02, size * 0.05, 'rgba(120,90,70,ALPHA)', 0.34);
-  soft(-0.105, V.mouth + 0.06, size * 0.085, 'rgba(122,92,72,ALPHA)', 0.3); // cheek hollow
-  soft(0.105, V.mouth + 0.06, size * 0.085, 'rgba(122,92,72,ALPHA)', 0.3);
+  soft(-0.105, V.mouth + 0.09, size * 0.085, 'rgba(122,92,72,ALPHA)', 0.3); // cheek hollow
+  soft(0.105, V.mouth + 0.09, size * 0.085, 'rgba(122,92,72,ALPHA)', 0.3);
   soft(0, V.mouth - 0.035, size * 0.045, 'rgba(126,94,76,ALPHA)', 0.32); // under lip
 
   // Warmth through the cheeks and nose — skin is never one flat hue.
@@ -736,10 +739,10 @@ export function makeHeadTexture(renderer, size = 512) {
   soft(0.09, V.nose - 0.06, size * 0.1, 'rgba(214,128,104,ALPHA)', 0.22);
   soft(0, V.nose, size * 0.055, 'rgba(220,136,110,ALPHA)', 0.2);
   // Cooler around the jaw and temples, which is where beard shadow sits.
-  soft(0, V.chin + 0.02, size * 0.14, 'rgba(120,120,140,ALPHA)', 0.14);
+  soft(0, V.chin + 0.06, size * 0.13, 'rgba(120,120,140,ALPHA)', 0.16);
 
   // --- eyes ----------------------------------------------------------------
-  for (const du of [-0.055, 0.055]) {
+  for (const du of [-0.0675, 0.0675]) {
     // Lid crease above the eye.
     ctx.strokeStyle = 'rgba(92,66,50,0.32)';
     ctx.lineWidth = size * 0.009;
@@ -856,11 +859,11 @@ export function makeHeadTexture(renderer, size = 512) {
   // The ear tabs are modelled; this only paints the concha shadow so they are
   // not two blank paddles.
   for (const du of [-0.25, 0.25]) {
-    soft(du, V.eyes - 0.03, size * 0.045, 'rgba(112,78,58,ALPHA)', 0.45);
+    soft(du, V.eyes - 0.09, size * 0.045, 'rgba(112,78,58,ALPHA)', 0.45);
     ctx.strokeStyle = 'rgba(96,66,50,0.5)';
     ctx.lineWidth = size * 0.007;
     ctx.beginPath();
-    ctx.arc(px(du), py(V.eyes - 0.03), size * 0.022, 0.6, 4.2);
+    ctx.arc(px(du), py(V.eyes - 0.09), size * 0.022, 0.6, 4.2);
     ctx.stroke();
   }
 
@@ -870,7 +873,7 @@ export function makeHeadTexture(renderer, size = 512) {
   for (let i = 0; i < 3200; i++) {
     const u = (Math.random() - 0.5) * 0.34;
     const spread = 1 - Math.abs(u) / 0.2;
-    const v = V.chin - 0.04 + Math.random() * 0.16;
+    const v = V.chin - 0.02 + Math.random() * 0.2;
     // Exclude the whole lip band, not just above it — the previous guard
     // started 0.02 above the mouth line and buried the mouth in stubble.
     if (Math.abs(v - V.mouth) < 0.032 && Math.abs(u) < 0.06) continue;
@@ -882,7 +885,7 @@ export function makeHeadTexture(renderer, size = 512) {
   // Pores and fine tonal break-up over the whole face.
   for (let i = 0; i < 9000; i++) {
     const u = (Math.random() - 0.5) * 0.5;
-    const v = V.chin - 0.08 + Math.random() * 0.62;
+    const v = V.chin - 0.02 + Math.random() * 0.72;
     const dark = Math.random() < 0.55;
     ctx.fillStyle = dark
       ? `rgba(122,96,78,${0.05 + Math.random() * 0.1})`
@@ -917,7 +920,7 @@ export function makeSkinRoughness(renderer, size = 256) {
   ctx.fillRect(0, 0, size, size);
 
   const py = (v) => (1 - v) * size;
-  const px = (u) => (0.25 + u) * size;
+  const px = (u) => (0.5 + u) * size;
   const shine = (u, v, r, amount) => {
     const g = ctx.createRadialGradient(px(u), py(v), 0, px(u), py(v), r);
     g.addColorStop(0, `rgba(90,90,90,${amount})`);

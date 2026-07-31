@@ -69,45 +69,58 @@ function lobe(a, centre, width) {
   return Math.exp(-(d / width) * (d / width));
 }
 
-/**
- * @param {object} skull  { cy, R, x, z } — skull centre height in head-bone
- *   space, its radius, and the x/z proportion multipliers the head was built
- *   with, so hair follows the same ellipsoid.
- */
-function capRings(skull, { hairline, thickness, steps = 10, edge = null, lump = null }) {
-  const rings = [];
+/** Piecewise-linear profile lookup, matching the head's own. */
+function profile(table, h) {
+  for (let i = 1; i < table.length; i++) {
+    if (h <= table[i][0]) {
+      const [h0, v0] = table[i - 1];
+      const [h1, v1] = table[i];
+      return lerp(v0, v1, (h - h0) / (h1 - h0));
+    }
+  }
+  return table[table.length - 1][1];
+}
 
-  // A point on the (slightly inflated) skull ellipsoid at polar angle phi.
-  // phi = 0 is the bottom pole, PI the crown, so *lowering* phi moves down the
-  // skull's surface.
-  const point = (phi, hr) => [
-    hr * skull.x * Math.sin(phi),
-    skull.cy - hr * Math.cos(phi),
-    hr * skull.z * Math.sin(phi),
-  ];
+/**
+ * @param {object} skull  { chin, height, profileW, profileD, S } in head-bone
+ *   local space, so hair follows the same breadth/depth profiles the skull was
+ *   actually built from rather than an ellipsoid approximation of it.
+ *
+ * `hairline` and `edge` are in TRUE height fraction, matching the head: 0.72 is
+ * the front hairline, 0.565 the brow, 0.22 the nape.
+ */
+function capRings(skull, { hairline, thickness, steps = 14, edge = null, lump = null }) {
+  const rings = [];
+  const { chin, height, profileW, profileD, S } = skull;
 
   for (let i = 0; i <= steps; i++) {
     const k = i / steps;
-    const phiBase = lerp(hairline, Math.PI, k);
-    // Thickest across the crown, thinning to nothing at the hairline so the
-    // edge disappears into the scalp instead of ending on a visible lip.
-    const hr = skull.R * (1.012 + thickness * Math.sin(k * Math.PI * 0.9));
-    const base = point(phiBase, hr);
+    // Inflate off the scalp. A 3.6mm shell is a coat of paint, not a hair mass;
+    // this is thickest across the crown and tapers to nothing at the hairline
+    // so the edge disappears into the scalp.
+    const inflate = 1 + thickness * Math.sin(Math.min(k * 1.15, 1) * Math.PI * 0.9);
+
+    const hBase = lerp(hairline, 0.985, k);
+    const at = (h) => [
+      profile(profileW, h) * S * inflate,
+      chin + h * height,
+      profile(profileD, h) * S * inflate,
+    ];
+    const base = at(hBase);
 
     rings.push({
-      p: [0, base[1], 0],
+      p: [0, base[1], 0.012 * S],
       rx: Math.max(base[0], 0.002),
       rz: Math.max(base[2], 0.002),
       v: k,
       shape: (a) => {
-        // Hair that hangs lower at the sides and nape must travel *down the
-        // skull's surface*, which means lowering phi at those angles. The
-        // obvious alternative — translating the vertex down in Y — moves it
-        // inside the ellipsoid, which is what made the first version of this
-        // shred through the face.
+        // Hair that hangs lower at the sides and the nape must travel *down the
+        // skull's surface*. Translating the vertex down in Y instead moves it
+        // inside the head, which is what made the first version shred through
+        // the face.
         const drop = edge ? edge(a) : 0;
-        const phi = lerp(Math.max(hairline - drop, 0.3), Math.PI, k);
-        const q = point(phi, hr);
+        const h = lerp(Math.max(hairline - drop, 0.06), 0.985, k);
+        const q = at(h);
         const c = Math.cos(a);
         const sn = Math.sin(a);
         return {
@@ -122,9 +135,17 @@ function capRings(skull, { hairline, thickness, steps = 10, edge = null, lump = 
   return rings;
 }
 
-/** 0 at the brow, rising to `amount` at the nape — in radians of polar angle. */
-function sweepBack(amount) {
-  return (a) => amount * (1 - Math.sin(a)) * 0.5;
+/**
+ * Hairline shape, in height fraction below the front hairline. Front of head is
+ * a = PI/2. A real hairline recedes at the temples, drops down the sideburn and
+ * runs lowest at the nape.
+ */
+function hairline(temple, sideburn, nape) {
+  return (a) => {
+    const back = (1 - Math.sin(a)) * 0.5;      // 0 front, 1 nape
+    const sideness = Math.abs(Math.cos(a));    // 1 at the ears
+    return nape * back * back + sideburn * sideness + temple * sideness * Math.max(0, Math.sin(a));
+  };
 }
 
 /**
@@ -136,19 +157,26 @@ const STYLES = [
   {
     name: 'buzz',
     weight: 3,
-    build: (s) => capRings(s, { hairline: 2.5, thickness: 0.014, edge: sweepBack(0.16) }),
+    build: (s) =>
+      capRings(s, { hairline: 0.7, thickness: 0.018, edge: hairline(0.02, 0.08, 0.3) }),
   },
   {
     name: 'crop',
     weight: 4,
-    build: (s) => capRings(s, { hairline: 2.38, thickness: 0.05, edge: sweepBack(0.3) }),
+    build: (s) =>
+      capRings(s, { hairline: 0.73, thickness: 0.055, edge: hairline(0.03, 0.12, 0.34) }),
   },
   {
     name: 'mop',
     weight: 3,
-    // Fuller, and hanging well down over the ears and the nape.
+    // Fuller, hanging well down over the ears and the nape.
     build: (s) =>
-      capRings(s, { hairline: 2.24, thickness: 0.1, steps: 12, edge: sweepBack(0.62) }),
+      capRings(s, {
+        hairline: 0.71,
+        thickness: 0.1,
+        steps: 16,
+        edge: hairline(0.02, 0.24, 0.42),
+      }),
   },
   {
     name: 'curls',
@@ -157,11 +185,26 @@ const STYLES = [
     // distance, since individual strands are not affordable here.
     build: (s) =>
       capRings(s, {
-        hairline: 2.3,
-        thickness: 0.16,
-        steps: 14,
-        edge: sweepBack(0.44),
-        lump: (a, k) => 0.045 * Math.sin(a * 5 + k * 9) + 0.03 * Math.sin(a * 9 - k * 6),
+        hairline: 0.72,
+        thickness: 0.13,
+        steps: 16,
+        edge: hairline(0.04, 0.2, 0.38),
+        lump: (a, k) => 0.032 * Math.sin(a * 5 + k * 9) + 0.022 * Math.sin(a * 9 - k * 6),
+      }),
+  },
+  {
+    name: 'receding',
+    weight: 2,
+    // A widow's peak: the hairline sits high at the temples and dips at centre.
+    build: (s) =>
+      capRings(s, {
+        hairline: 0.78,
+        thickness: 0.04,
+        edge: (a) => {
+          const back = (1 - Math.sin(a)) * 0.5;
+          const peak = 0.06 * lobe(a, Math.PI / 2, 0.28);
+          return 0.34 * back * back + 0.1 * Math.abs(Math.cos(a)) + peak - 0.04;
+        },
       }),
   },
   {
@@ -171,16 +214,12 @@ const STYLES = [
   },
 ];
 
-/**
- * A tied-back bun, added on top of a flat-swept cap. Separate from the style
- * table because it is an extra piece of geometry rather than a different cap.
- */
 function bunGeometry(skull) {
   const rings = [];
   const steps = 8;
-  const br = skull.R * 0.34;
-  const cy = skull.cy + skull.R * 0.2;
-  const cz = -skull.R * skull.z - br * 0.45;
+  const br = skull.height * 0.17;
+  const cy = skull.chin + 0.72 * skull.height;
+  const cz = -profile(skull.profileD, 0.66) * skull.S - br * 0.5;
   for (let i = 0; i <= steps; i++) {
     const k = i / steps;
     const phi = lerp(0.35, Math.PI - 0.35, k);
@@ -217,7 +256,7 @@ export function hairFor(player, skull) {
   // Roughly one player in seven ties it back.
   const bun = style.name !== 'bald' && ((h >>> 8) % 7) === 0;
 
-  const key = `${style.name}:${bun}:${skull.R.toFixed(4)}`;
+  const key = `${style.name}:${bun}:${skull.height.toFixed(4)}`;
   if (CACHE.has(key)) return CACHE.get(key);
 
   const rings = style.build(skull);
