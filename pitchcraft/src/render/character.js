@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { PLAYER } from '../core/config.js';
+import { hairFor } from './hair.js';
 import {
   makeNumberTexture,
   makeShirtTexture,
@@ -454,6 +455,7 @@ const lerp = (a, b, t) => a + (b - a) * t;
  * bone matrices, not through vertex data.
  */
 let GEO = null;
+let SKULL = null;
 
 function bodyGeometry(boneIndex) {
   if (GEO) return GEO;
@@ -529,6 +531,9 @@ function bodyGeometry(boneIndex) {
   const neckR = 0.062 * S;
   const PHI0 = Math.asin(Math.min(1, neckR / (R * HEAD_X)));
   const headCentre = neckTop + R * Math.cos(PHI0);
+  // Recorded for hair.js, in head-bone local space (the head bone sits at
+  // neckTop), so hairstyles sit on the skull this actually built.
+  SKULL = { cy: headCentre - neckTop, R, x: HEAD_X, z: HEAD_Z };
 
   // A face needs far more angular resolution than a shin, and the neck rings
   // must share it or the lathe cannot stitch them to the skull.
@@ -573,32 +578,10 @@ function bodyGeometry(boneIndex) {
   }
   m.lathe(headRings);
 
-  // Hair: a cap following the same ellipsoid, a hair's breadth outside it,
-  // starting above the brow so the face is not buried.
-  // Chosen so the cap's lower edge lands at V ~0.76 — just under the hairline
-  // the face map paints. At 1.78 it started at V 0.55 and covered the eyes.
-  const HAIR_PHI = PHI0 + 0.7 * (Math.PI - PHI0);
-  const hairRings = [];
-  const HAIR_STEPS = 10;
-  for (let i = 0; i <= HAIR_STEPS; i++) {
-    const k = i / HAIR_STEPS;
-    const phi = lerp(HAIR_PHI, Math.PI, k);
-    const hr = R * 1.03;
-    hairRings.push({
-      p: [0, headCentre - hr * Math.cos(phi), 0],
-      rx: Math.max(hr * HEAD_X * Math.sin(phi), 0.004 * S),
-      rz: Math.max(hr * HEAD_Z * Math.sin(phi), 0.004 * S),
-      w: [['head', 1]],
-      slot: SLOT.hair,
-      v: k,
-      radial: FACE_RADIAL,
-      // The hairline sits a little lower at the back than across the brow. This
-      // was 0.16R and applied to the sides too, which hung sideburns down over
-      // both cheeks.
-      shape: (a) => ({ dy: -R * 0.07 * (1 - k) * Math.max(0, -Math.sin(a)) }),
-    });
-  }
-  m.lathe(hairRings);
+  // Hair is NOT part of this geometry. It is a per-player mesh parented to the
+  // head bone (see hair.js): baking it in here gave all fourteen players on the
+  // pitch the same head, which is the fastest way to make a squad read as
+  // fourteen copies rather than fourteen people.
 
   // --- arms ----------------------------------------------------------------
   for (const key of ['armL', 'armR']) {
@@ -659,22 +642,47 @@ function bodyGeometry(boneIndex) {
       });
     }
 
-    // Hand: a flattened bulb below the wrist.
-    for (let i = 1; i <= 4; i++) {
-      const t = i / 4;
-      const y = hd[1] - t * 0.085 * S;
-      const r = Math.sin((1 - t * 0.85) * Math.PI * 0.62) * 0.05 * S;
+    // Hand.
+    //
+    // A hand is not a bulb: it is flat, wider than it is thick, it broadens at
+    // the knuckles before tapering to the fingertips, and it has a thumb on the
+    // inside edge. Modelling individual fingers is not worth the triangles at
+    // any distance this game uses, but the *silhouette* — flat, broad, thumbed —
+    // is, and a rounded stub is one of the things that most says "mannequin".
+    const side = key === 'armL' ? -1 : 1;
+    const HAND_LEN = 0.185 * S;
+    for (let i = 1; i <= 7; i++) {
+      const t = i / 7;
+      const y = hd[1] - t * HAND_LEN;
+      // Narrow wrist, widest across the knuckles at t ~ 0.42, tapering out.
+      const w =
+        t < 0.42
+          ? lerp(0.036, 0.052, t / 0.42)
+          : lerp(0.052, 0.028, (t - 0.42) / 0.58);
+      // Thickness stays roughly constant then thins toward the fingertips.
+      const thick = lerp(0.021, 0.012, Math.max(0, (t - 0.4) / 0.6)) * S;
       rings.push({
         p: [hd[0], y, 0],
-        rx: r * 0.72,
-        rz: r * 1.15,
+        rx: w * S,
+        rz: thick,
         w: [[`${key}.hand`, 1]],
         slot: SLOT.skin,
         v: 0,
+        // Thumb: a bulge on the inside edge of the hand, near the wrist. Angles
+        // are in the ring's own frame, so the inside edge is +X on the left arm
+        // and -X on the right.
+        shape: (a) => {
+          const inner = lobe(a, side < 0 ? 0 : Math.PI, 0.5);
+          const at = band(t, 0.3, 0.16);
+          return {
+            dx: -side * 0.028 * S * inner * at,
+            dz: -0.006 * S * inner * at,
+          };
+        },
       });
     }
     const armEnd = m.lathe(rings);
-    m.cap(armEnd, [hd[0], hd[1] - 0.1 * S, 0], SLOT.skin, [[`${key}.hand`, 1]]);
+    m.cap(armEnd, [hd[0], hd[1] - HAND_LEN - 0.012 * S, 0], SLOT.skin, [[`${key}.hand`, 1]]);
   }
 
   // --- legs ----------------------------------------------------------------
@@ -720,39 +728,59 @@ function bodyGeometry(boneIndex) {
       const t = i / SH_STEPS;
       const y = lerp(knee[1], ankle[1], t);
       // Calf peaks at about a quarter of the way down.
-      const r = (0.068 + Math.sin(Math.min(t * 3.2, Math.PI)) * 0.019 - t * 0.028) * S;
+      // Calf bulge near the top, a shinpad bulge on the front of the lower
+      // shin, and the sock's turnover just under the knee.
+      const r =
+        (0.068 +
+          Math.sin(Math.min(t * 3.2, Math.PI)) * 0.019 -
+          t * 0.028 +
+          band(t, 0.24, 0.07) * 0.006) *
+        S;
       rings.push({
         p: [knee[0], y, t < 0.3 ? 0 : -0.004 * S],
         rx: r,
         rz: r * 1.02,
         w: jointWeightsAfter(`${key}.hip`, `${key}.knee`, t),
-        // Sock over the lower 62% of the shin, bare calf above it.
+        // Sock over the lower 80% of the shin, bare calf above it.
         slot: t < 0.2 ? SLOT.skin : SLOT.socks,
         v: 0,
+        // Shinpad: a flat plate on the front of the lower shin, which is a
+        // real bulge every footballer has and reads even in silhouette.
+        shape: (a) => ({
+          dz: 0.012 * S * lobe(a, Math.PI / 2, 0.75) * band(t, 0.62, 0.24),
+        }),
       });
     }
 
-    // Foot: rings swept in the XY plane so the tube runs forward, not down.
+    // Boot: rings swept in the XY plane so the tube runs forward, not down.
+    //
+    // A football boot is a distinct shape and worth the handful of extra rings:
+    // a raised heel counter at the back, an instep that dips over the laces,
+    // and a low flat toe box. A plain tapered tube reads as a slipper.
     const footY = ankle[1] - DIM.footH * 0.55;
-    const FOOT_STEPS = 6;
+    const FOOT_STEPS = 10;
     for (let i = 0; i <= FOOT_STEPS; i++) {
       const t = i / FOOT_STEPS;
-      const z = lerp(-DIM.footLen * 0.3, DIM.footLen * 0.72, t);
-      // Wide and shallow at the heel, tapering to a rounded toe.
-      const w = (0.046 - t * t * 0.016) * S;
-      const h = (0.045 - t * 0.014) * S;
+      const z = lerp(-DIM.footLen * 0.34, DIM.footLen * 0.74, t);
+      // Widest across the ball of the foot, narrowing at heel and toe.
+      const w = (0.036 + Math.sin(Math.min(t * 1.5, 1) * Math.PI * 0.85) * 0.016 - t * t * 0.014) * S;
+      // Tall at the heel counter, dipping over the instep, flat at the toe.
+      const h =
+        (0.052 - Math.sin(Math.max(0, (t - 0.15)) * 2.6) * 0.018 - t * 0.012) * S;
       rings.push({
-        p: [knee[0], footY + (1 - t) * 0.012 * S, z],
+        p: [knee[0], footY + (1 - t) * 0.014 * S, z],
         rx: w,
-        rz: h,
+        rz: Math.max(h, 0.012 * S),
         axis: 'z',
         w: t < 0.25 ? jointWeightsAfter(`${key}.knee`, `${key}.ankle`, t) : [[`${key}.ankle`, 1]],
         slot: SLOT.boot,
         v: 0,
+        // Flatten the underside: a sole is flat, not a cylinder bottom.
+        shape: (a) => ({ dy: Math.max(0, -Math.sin(a)) * 0.011 * S }),
       });
     }
     const footEnd = m.lathe(rings);
-    m.cap(footEnd, [knee[0], footY - 0.004 * S, DIM.footLen * 0.78], SLOT.boot, [
+    m.cap(footEnd, [knee[0], footY - 0.002 * S, DIM.footLen * 0.8], SLOT.boot, [
       [`${key}.ankle`, 1],
     ]);
   }
@@ -884,6 +912,38 @@ export function createPlayer(player, teamCfg, opts = {}) {
   // more robust than recomputing per frame.
   mesh.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, DIM.hipY, 0), PLAYER.height * 1.3);
   mesh.frustumCulled = false;
+
+  // Hair: its own mesh on the head bone, style chosen deterministically from
+  // the player's id so a given match always looks the same.
+  const hairGeo = hairFor(player, SKULL);
+  if (hairGeo) {
+    const hairMesh = new THREE.Mesh(hairGeo, M.hair);
+    hairMesh.castShadow = true;
+    skeleton.joints.head.add(hairMesh);
+  }
+
+  // Build variation.
+  //
+  // Fourteen identically-proportioned players read as a cloned sprite sheet no
+  // matter how good any one of them is. Height comes from the root; build comes
+  // from scaling the spine and hip bones, which propagates through the skinning
+  // to the whole torso and legs. `animation.js` only ever writes rotations, so
+  // these scales survive every pose.
+  const vary = (seed, spread) => {
+    const n = Math.sin(player.id * 12.9898 + seed * 78.233) * 43758.5453;
+    return 1 + ((n - Math.floor(n)) - 0.5) * 2 * spread;
+  };
+  // Height is a *uniform* root scale: uniform scale commutes with rotation, so
+  // it is safe under any pose.
+  root.scale.setScalar(vary(1, 0.04));
+  // Build is a non-uniform scale on the spine only. Non-uniform scale on a bone
+  // shears its children when they rotate, so it must not go on `hips` (whose
+  // children are the legs, which rotate through a full stride) — the spine
+  // rotates by at most a few tenths of a radian, where the shear is invisible.
+  // Bone scales also compound down the chain, which is why only one bone in the
+  // chain carries it.
+  const build = vary(2, 0.08);
+  skeleton.joints.spine.scale.set(build, 1, build);
 
   // Kit decals.
   //
