@@ -205,10 +205,17 @@ export class Match {
 
     this.phaseTime += dt;
 
+    // The clock runs through restarts and celebrations, exactly as it does in a
+    // real match. Stopping it on every dead ball meant a "5 minute" match took
+    // an unbounded amount of simulated time to reach full time.
+    this.clock += dt * MATCH.clockScale;
+
     switch (this.phase) {
       case Phase.KICKOFF:
       case Phase.RESTART:
         this.stepRestart(dt);
+        // A match can legitimately end while the ball is dead.
+        if (this.clock >= this.duration && this.phase !== Phase.FULL_TIME) this.endMatch();
         break;
       case Phase.GOAL:
         this.stepGoal(dt);
@@ -221,8 +228,6 @@ export class Match {
   }
 
   stepPlay(dt) {
-    this.clock += dt * MATCH.clockScale;
-
     this.runControllers(dt);
     this.world.step(dt);
     this.trackPossession(dt);

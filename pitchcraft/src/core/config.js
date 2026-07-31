@@ -76,6 +76,10 @@ export const PLAYER = {
   controlRadius: 1.05,
   // Distance at which a player can first influence a loose ball.
   reachRadius: 1.5,
+  // Relative ball speed (m/s) at which control quality falls to zero.
+  controlPace: 27,
+  // Ball height (m) at which a player can still bring the ball down.
+  controlHeight: 0.62,
   tackleRange: 2.05,
   tackleCooldown: 0.75,
   tackleDuration: 0.42,
@@ -161,6 +165,13 @@ export const AI = {
   wGoalThreat: 1.5,
 
   decisionInterval: 0.12,
+  // Seconds a carrier keeps the ball before looking to pass (unless pressed).
+  minCarryTime: 1.05,
+  // Utility a pass must beat to be played.
+  passThreshold: 0.95,
+  passThresholdPressed: 0.42,
+  // Pressure at which a carrier abandons its dwell time and releases early.
+  pressureRelease: 1.45,
   runTriggerChance: 0.55,
   // Minimum spacing AI teammates try to keep from one another.
   spacing: 6.5,
@@ -288,22 +299,28 @@ export const ROLE_ATTRS = {
   ST: { speed: 1.04, accel: 1.03, control: 1.02, power: 1.04, aggression: 0.55 },
 };
 
+/**
+ * Camera placement is chosen to mimic a real main broadcast gantry: elevated in
+ * the near stand, set back beyond the touchline, looking down at roughly 25deg.
+ * `distance` is measured from the point of interest, so the camera always sits
+ * outside the field of play (HALF_WIDTH = 25) rather than hovering over it.
+ */
 export const CAMERA = {
   broadcast: {
-    height: 21.5,
-    distance: 27,
+    height: 19,
+    distance: 40,
     lookAhead: 3.2,
-    fov: 42,
+    fov: 38,
     followLag: 3.4,
-    zoomNear: 20,
-    zoomFar: 33,
+    zoomNear: 34,
+    zoomFar: 47,
     maxLateral: 0.62,
   },
   close: {
-    height: 9.5,
-    distance: 15.5,
+    height: 11,
+    distance: 24,
     lookAhead: 4.5,
-    fov: 55,
+    fov: 50,
     followLag: 5.2,
     maxLateral: 0.8,
   },

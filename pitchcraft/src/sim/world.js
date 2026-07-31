@@ -224,7 +224,8 @@ export class World {
         owner.state !== PlayerState.STUMBLE &&
         owner.state !== PlayerState.TACKLE &&
         owner.state !== PlayerState.DIVE &&
-        !ball.airborne &&
+        // A dribbler shouldn't lose the ball just because it skipped off the turf.
+        ball.pos.y < PLAYER.controlHeight &&
         dist2(owner.pos, ball.pos) < PLAYER.controlRadius * 2.3;
 
       if (!keep) {
@@ -316,15 +317,22 @@ export class World {
     const relZ = ball.vel.z - player.vel.z;
     const relSpeed = Math.hypot(relX, relZ, ball.vel.y);
 
-    // Control quality falls off with the pace of the incoming ball.
+    // Control quality falls off with the pace of the incoming ball. The scale is
+    // deliberately generous: a player running *onto* a pass has a high relative
+    // speed, but cushioning a ball you have run to meet is routine, and treating
+    // it as a heavy touch turned every pass into a scramble.
     const skill = player.attrs.control * (player.isKeeper ? 1.35 : 1);
-    const quality = clamp(1 - relSpeed / (17 * skill), 0.06, 1);
+    const quality = clamp(1 - relSpeed / (PLAYER.controlPace * skill), 0.06, 1);
 
     const wasOwned = ball.owner;
     const interception =
       ball.inFlightFrom && ball.inFlightFrom.team !== player.team && relSpeed > 4;
 
-    if (quality > 0.55 && !ball.airborne) {
+    // A ball only has to be at foot height to be brought down — requiring it to
+    // be exactly on the turf meant a bouncing ball could never be controlled.
+    const controllableHeight = ball.pos.y < PLAYER.controlHeight;
+
+    if (quality > 0.55 && controllableHeight) {
       // Clean control: kill most of the pace and set the ball in front.
       ball.vel.x *= 0.12;
       ball.vel.z *= 0.12;

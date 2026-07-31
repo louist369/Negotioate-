@@ -525,10 +525,17 @@ export class TeamAI {
     }
 
     // --- Pass? ---
-    if (p.kickCooldown <= 0 && p.ai.decisionTimer <= 0) {
+    // A carrier must settle on the ball before looking to release it, unless
+    // it's genuinely under pressure. Without this the AI offloads within a
+    // couple of frames of every touch and the ball is permanently in flight.
+    const carryTime = world.time - (p.lastReceiveTime ?? -99);
+    const settled = carryTime > AI.minCarryTime || pressure > AI.pressureRelease;
+
+    if (p.kickCooldown <= 0 && p.ai.decisionTimer <= 0 && settled) {
       p.ai.decisionTimer = AI.decisionInterval;
       const best = this.bestPass(p, pressure);
-      if (best && best.utility > (pressure > 0.9 ? 0.34 : 0.52)) {
+      const threshold = pressure > 0.9 ? AI.passThresholdPressed : AI.passThreshold;
+      if (best && best.utility > threshold) {
         this.executeKick(p, best.type, best.power, { x: best.x, z: best.z }, pressure);
         return;
       }

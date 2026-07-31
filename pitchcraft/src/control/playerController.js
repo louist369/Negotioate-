@@ -234,12 +234,14 @@ export class PlayerController {
     this.lastAxis.x = axis.x;
     this.lastAxis.z = axis.z;
 
-    this.autoSwitch(match);
+    // A deliberate switch must be resolved *before* the automatic one, or the
+    // auto-switch can move control on the same frame and the player's press
+    // appears to do nothing.
+    if (input.wasPressed(Action.SWITCH)) this.manualSwitch(axis);
+    else this.autoSwitch(match);
 
     const p = this.controlledPlayer;
     if (!p) return;
-
-    if (input.wasPressed(Action.SWITCH)) this.manualSwitch(axis);
 
     // Restart handling: the human can take their own restart.
     if (match.phase === Phase.RESTART || match.phase === Phase.KICKOFF) {

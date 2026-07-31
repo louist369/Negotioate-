@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Pitchcraft</title>
+    <meta name="description" content="Pitchcraft — an original browser-based 3D football match simulator." />
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><circle cx='16' cy='16' r='13' fill='%23f6f6f2'/><circle cx='16' cy='16' r='4' fill='%231c1c22'/></svg>" />
+    <link rel="stylesheet" href="/src/ui/style.css" />
+  </head>
+  <body>
+    <canvas id="game"></canvas>
+    <div id="hud"></div>
+
+    <div id="loading">
+      <div class="boot">
+        <div class="mark">
+          <span class="ball"></span>
+          <h1>PITCHCRAFT</h1>
+        </div>
+        <p>Building the stadium…</p>
+      </div>
+    </div>
+
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
