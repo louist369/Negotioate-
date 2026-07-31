@@ -1,0 +1,24 @@
+{
+  "name": "pitchcraft",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Pitchcraft — an original browser-based 3D football match simulator built with Three.js",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview --port 4173",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "sim": "node tools/headlessMatch.js",
+    "shots": "node tools/capture.js"
+  },
+  "dependencies": {
+    "three": "^0.169.0"
+  },
+  "devDependencies": {
+    "vite": "^5.4.10",
+    "vitest": "^2.1.4",
+    "playwright": "^1.48.0"
+  }
+}
