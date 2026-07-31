@@ -23,7 +23,7 @@ let shotDistances = [];
 let goalDistances = [];
 
 for (let i = 0; i < matches; i++) {
-  const match = new Match({ seed: 5000 + i * 613, humanTeam: 0 });
+  const match = new Match({ seed: 5000 + i * 613, humanTeam: 0, difficulty: 'hard' });
   const ball = match.world.ball;
 
   let lastIntent = null;

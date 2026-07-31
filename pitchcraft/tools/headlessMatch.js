@@ -12,7 +12,7 @@ const matches = Number(process.argv[2]) || 5;
 const verbose = process.argv.includes('--verbose');
 
 function runMatch(seed) {
-  const match = new Match({ seed, humanTeam: 0 });
+  const match = new Match({ seed, humanTeam: 0, difficulty: 'hard' });
   const counts = {
     goals: 0,
     shots: 0,

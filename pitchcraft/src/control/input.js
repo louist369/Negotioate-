@@ -66,6 +66,13 @@ export class InputManager {
     this.axis = { x: 0, z: 0 };
     this.gamepadIndex = null;
     this.padPrev = [];
+    /**
+     * Incremented once per rendered frame. The simulation runs at a fixed step
+     * and may take several steps inside one frame, so consumers use this to
+     * make sure an edge-triggered action fires exactly once per keypress
+     * regardless of frame rate.
+     */
+    this.frameId = 0;
     this.enabled = true;
     this.lastDevice = 'keyboard';
 
@@ -194,6 +201,7 @@ export class InputManager {
   endFrame() {
     this.pressed.clear();
     this.released.clear();
+    this.frameId++;
   }
 
   isDown(action) {
@@ -222,5 +230,6 @@ export class NullInput extends InputManager {
   endFrame() {
     this.pressed.clear();
     this.released.clear();
+    this.frameId++;
   }
 }

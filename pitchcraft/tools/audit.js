@@ -30,7 +30,10 @@ const verbose = process.argv.includes('--verbose');
 const STEP = SIM.fixedStep;
 
 function auditMatch(seed) {
-  const match = new Match({ seed, humanTeam: 0 });
+  // Without a human driver both sides must be pinned to the same tier, or the
+  // measurement compares full-strength team-mates against a handicapped
+  // opponent. With the bot driving, the default tier is what a player faces.
+  const match = new Match({ seed, humanTeam: 0, difficulty: useBot ? 'normal' : 'hard' });
   const rng = new Rng(seed ^ 0x5f3759df);
 
   let bot = null;

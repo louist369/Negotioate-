@@ -50,12 +50,39 @@ export class PlayerController {
     this.camBasis = { fwdX: 0, fwdZ: -1, rightX: 1, rightZ: 0 };
     this.time = 0;
     this.assistTarget = null;
+    /**
+     * Frame on which each edge-triggered action was last acted upon. The
+     * simulation takes up to SIM.maxSubSteps fixed steps per rendered frame,
+     * and `wasPressed` stays true for all of them — so a single tap of the
+     * switch key used to fire once per sub-step (eight player switches at low
+     * frame rates). Edge actions are consumed once per frame instead.
+     */
+    this.consumedOn = new Map();
 
     this.selectNearestToBall();
   }
 
   get team() {
     return this.world.teams[this.teamId];
+  }
+
+  /** True at most once per rendered frame for a given edge-triggered action. */
+  takePress(action) {
+    if (!this.input.wasPressed(action)) return false;
+    const frame = this.input.frameId ?? 0;
+    if (this.consumedOn.get(action) === frame) return false;
+    this.consumedOn.set(action, frame);
+    return true;
+  }
+
+  /** Same one-shot semantics for key releases. */
+  takeRelease(action) {
+    if (!this.input.wasReleased(action)) return false;
+    const key = `r:${action}`;
+    const frame = this.input.frameId ?? 0;
+    if (this.consumedOn.get(key) === frame) return false;
+    this.consumedOn.set(key, frame);
+    return true;
   }
 
   clearCharges() {
@@ -272,7 +299,7 @@ export class PlayerController {
     // A deliberate switch must be resolved *before* the automatic one, or the
     // auto-switch can move control on the same frame and the player's press
     // appears to do nothing.
-    if (input.wasPressed(Action.SWITCH)) this.manualSwitch(axis);
+    if (this.takePress(Action.SWITCH)) this.manualSwitch(axis);
     else this.autoSwitch(match);
 
     const p = this.controlledPlayer;
@@ -315,10 +342,10 @@ export class PlayerController {
     const aimDir = mag > 0.2 ? dir : { x: taker.attackDir, z: 0 };
 
     let kind = null;
-    if (this.input.wasPressed(Action.PASS)) kind = 'pass';
-    else if (this.input.wasPressed(Action.LOFT)) kind = 'loft';
-    else if (this.input.wasPressed(Action.THROUGH)) kind = 'through';
-    else if (this.input.wasPressed(Action.SHOOT)) kind = 'shot';
+    if (this.takePress(Action.PASS)) kind = 'pass';
+    else if (this.takePress(Action.LOFT)) kind = 'loft';
+    else if (this.takePress(Action.THROUGH)) kind = 'through';
+    else if (this.takePress(Action.SHOOT)) kind = 'shot';
 
     if (!kind) return;
 
@@ -378,7 +405,7 @@ export class PlayerController {
     if (hasBall && p.kickCooldown <= 0) {
       let fired = false;
       for (const [action, key] of CHARGEABLE) {
-        if (!input.wasReleased(action)) continue;
+        if (!this.takeRelease(action)) continue;
         // A tap still counts: any hold at all leaves a non-zero charge, and a
         // release with no accumulated charge falls back to a light touch.
         const power = KICK_POWER[key](this.charges[key]);
@@ -386,13 +413,13 @@ export class PlayerController {
         fired = true;
         break;
       }
-      if (!fired && input.wasPressed(Action.THROUGH)) {
+      if (!fired && this.takePress(Action.THROUGH)) {
         this.fire(match, 'through', 0.7, dir, mag);
       }
     }
 
     // --- tackle / press ---------------------------------------------------
-    if (input.wasPressed(Action.TACKLE) && !hasBall) {
+    if (this.takePress(Action.TACKLE) && !hasBall) {
       const tx = ball.pos.x - p.pos.x;
       const tz = ball.pos.z - p.pos.z;
       const d = Math.hypot(tx, tz);
@@ -407,7 +434,7 @@ export class PlayerController {
     }
 
     // --- skill move -------------------------------------------------------
-    if (input.wasPressed(Action.SKILL) && hasBall && this.skillCooldown <= 0) {
+    if (this.takePress(Action.SKILL) && hasBall && this.skillCooldown <= 0) {
       this.skillMove(dir, mag);
     }
   }

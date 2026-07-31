@@ -22,6 +22,7 @@ export class ScriptedInput {
     this.held = new Set();
     this.pressed = new Set();
     this.released = new Set();
+    this.frameId = 0;
   }
   move(x, z) {
     const l = Math.hypot(x, z);
@@ -51,6 +52,7 @@ export class ScriptedInput {
   endFrame() {
     this.pressed.clear();
     this.released.clear();
+    this.frameId++;
     if (this._toRelease) {
       for (const a of this._toRelease) this.release(a);
       this._toRelease = null;

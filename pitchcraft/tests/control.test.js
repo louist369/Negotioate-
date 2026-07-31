@@ -15,6 +15,7 @@ class FakeInput {
     this.held = new Set();
     this.pressed = new Set();
     this.released = new Set();
+    this.frameId = 0;
   }
   move(x, z) {
     this.axis.x = x;
@@ -34,6 +35,7 @@ class FakeInput {
   endFrame() {
     this.pressed.clear();
     this.released.clear();
+    this.frameId++;
   }
   poll() {}
   isDown(a) {
@@ -533,5 +535,69 @@ describe('animation locomotion', () => {
       p.updateAnim(1 / 120);
     }
     expect(p.anim.cycle).not.toBe(before);
+  });
+});
+
+describe('frame-rate independence of input', () => {
+  /**
+   * The simulation runs at a fixed step and may take several steps inside one
+   * rendered frame. `wasPressed` stays true for all of them, so an edge-triggered
+   * action must be consumed once per frame or it fires once per sub-step.
+   */
+  function manualSwitchesFor(stepsPerFrame) {
+    const { match, input, controller } = makeControlledMatch(9001);
+    toPlay(match, input);
+
+    let manual = 0;
+    const orig = controller.manualSwitch.bind(controller);
+    controller.manualSwitch = (axis) => {
+      manual++;
+      orig(axis);
+    };
+
+    const TOTAL = 24;
+    input.press(Action.SWITCH);
+    let done = 0;
+    while (done < TOTAL) {
+      const n = Math.min(stepsPerFrame, TOTAL - done);
+      for (let s = 0; s < n; s++) match.step(STEP);
+      input.endFrame();
+      done += n;
+    }
+    return manual;
+  }
+
+  it('fires a switch exactly once per press at any frame rate', () => {
+    // Regression: at 8 sub-steps per frame a single tap produced 8 switches,
+    // so pressing Q at a low frame rate skipped through the whole squad.
+    for (const stepsPerFrame of [1, 2, 4, 8]) {
+      expect(manualSwitchesFor(stepsPerFrame)).toBe(1);
+    }
+  });
+
+  it('fires a tackle exactly once per press at any frame rate', () => {
+    for (const stepsPerFrame of [1, 4, 8]) {
+      const { match, input, controller } = makeControlledMatch(9002);
+      toPlay(match, input);
+      const p = controller.controlledPlayer;
+      const ball = match.world.ball;
+      ball.frozen = false;
+      ball.owner = null;
+      p.tackleCooldown = 0;
+      p.setState(PlayerState.IDLE);
+      ball.pos.x = p.pos.x + 1.2;
+      ball.pos.z = p.pos.z;
+
+      let attempts = 0;
+      match.bus.on(EV.TACKLE, (e) => {
+        if (e.attempt) attempts++;
+      });
+
+      input.press(Action.TACKLE);
+      for (let s = 0; s < stepsPerFrame; s++) match.step(STEP);
+      input.endFrame();
+
+      expect(attempts).toBe(1);
+    }
   });
 });
