@@ -45,6 +45,14 @@ function latheGeometry(rings, radial) {
     }
   }
 
+  // Close the crown. An open cap leaves a 2cm hole, and with the hair material
+  // double-sided that hole shows the inside of the shell.
+  const last = rings[rings.length - 1];
+  const tip = pos.length / 3;
+  pos.push(last.p[0], last.p[1] + 0.004, last.p[2]);
+  uv.push(0.5, 1);
+  col.push(1, 1, 1);
+
   const stride = radial + 1;
   for (let j = 0; j < rings.length - 1; j++) {
     for (let i = 0; i < radial; i++) {
@@ -55,6 +63,9 @@ function latheGeometry(rings, radial) {
       idx.push(a0, b0, a1, a1, b0, b1);
     }
   }
+
+  const top = (rings.length - 1) * stride;
+  for (let i = 0; i < radial; i++) idx.push(top + i, tip, top + i + 1);
 
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));

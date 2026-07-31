@@ -60,7 +60,10 @@ const DIM = {
   headR: 0.115 * S,
   upperArm: 0.29 * S,
   foreArm: 0.27 * S,
-  shoulderW: 0.152 * S,
+  // Biacromial breadth 39cm, which is the figure for a 1.82m male. At 0.152
+  // this was 30.4cm — 24% narrow, and the cause of the sloping bottle
+  // shoulders, since the arm only reached full width 18cm down the humerus.
+  shoulderW: 0.195 * S,
   hipW: 0.105 * S,
   limbR: 0.058 * S,
   thighR: 0.082 * S,
@@ -214,7 +217,7 @@ function band(h, centre, width) {
   return Math.exp(-d * d);
 }
 
-function headShape(h, HEAD_H, S) {
+function headShape(h, HEAD_H, S, F) {
   // `h` is TRUE height fraction: 0 at the chin, 1 at the crown. Feature heights
   // below are human canon — eye line at the vertical midpoint, brow at 0.565,
   // mouth at 0.19 — which is only meaningful because h is now real height.
@@ -233,16 +236,16 @@ function headShape(h, HEAD_H, S) {
     // it is pulled down and forward out of that ring rather than being a ring
     // of its own — a horizontal ring can never be a chin.
     const low = band(h, 0.19, 0.1);
-    dy -= R * 0.085 * low * lobe(a, Math.PI / 2, 0.9);
-    dz += R * 0.045 * low * lobe(a, Math.PI / 2, 0.65);
+    dy -= R * 0.085 * F.chin * low * lobe(a, Math.PI / 2, 0.9);
+    dz += R * 0.045 * F.chin * low * lobe(a, Math.PI / 2, 0.65);
     // Mandible angle: the jaw corner, which is a real landmark and not a curve.
     const jawSide = lobe(a, 0.72, 0.3) + lobe(a, 2.42, 0.3);
     scale += 0.05 * jawSide * band(h, 0.26, 0.08);
     dy -= R * 0.028 * jawSide * band(h, 0.22, 0.08);
 
     // --- brow --------------------------------------------------------------
-    dz += R * 0.055 * lobe(a, Math.PI / 2, 0.95) * band(h, 0.565, 0.055);
-    dz += R * 0.03 * (lobe(a, 1.05, 0.3) + lobe(a, 2.09, 0.3)) * band(h, 0.565, 0.05);
+    dz += R * 0.055 * F.brow * lobe(a, Math.PI / 2, 0.95) * band(h, 0.565, 0.055);
+    dz += R * 0.03 * F.brow * (lobe(a, 1.05, 0.3) + lobe(a, 2.09, 0.3)) * band(h, 0.565, 0.05);
 
     // --- eye sockets -------------------------------------------------------
     // Set back under the brow. A real orbit is 12-15mm deep; 6.6mm read as
@@ -252,21 +255,21 @@ function headShape(h, HEAD_H, S) {
     // --- nose --------------------------------------------------------------
     // These bands overlap, so the magnitudes are set so their SUM is a real
     // nose (~2.5cm) rather than each being one.
-    dz += R * 0.05 * lobe(a, Math.PI / 2, 0.26) * band(h, 0.44, 0.07);
-    dz += R * 0.1 * lobe(a, Math.PI / 2, 0.2) * band(h, 0.33, 0.05);
-    dz += R * 0.06 * lobe(a, Math.PI / 2, 0.3) * band(h, 0.28, 0.04);
-    dx += R * 0.03 * (lobe(a, 1.34, 0.15) - lobe(a, 1.8, 0.15)) * band(h, 0.28, 0.03);
+    dz += R * 0.05 * F.noseProj * lobe(a, Math.PI / 2, 0.26) * band(h, 0.44 * F.noseLen, 0.07);
+    dz += R * 0.1 * F.noseProj * lobe(a, Math.PI / 2, 0.2) * band(h, 0.33 * F.noseLen, 0.05);
+    dz += R * 0.06 * F.noseProj * lobe(a, Math.PI / 2, 0.3) * band(h, 0.28 * F.noseLen, 0.04);
+    dx += R * 0.03 * F.noseW * (lobe(a, 1.34, 0.15) - lobe(a, 1.8, 0.15)) * band(h, 0.28, 0.03);
 
     // --- lips --------------------------------------------------------------
-    dz += R * 0.04 * lobe(a, Math.PI / 2, 0.42) * band(h, 0.215, 0.025);
-    dz += R * 0.05 * lobe(a, Math.PI / 2, 0.38) * band(h, 0.17, 0.024);
+    dz += R * 0.04 * F.lips * lobe(a, Math.PI / 2, 0.42) * band(h, 0.215, 0.025);
+    dz += R * 0.05 * F.lips * lobe(a, Math.PI / 2, 0.38) * band(h, 0.17, 0.024);
     dz -= R * 0.025 * lobe(a, Math.PI / 2, 0.48) * band(h, 0.192, 0.013);
     // Philtrum groove.
     dz -= R * 0.016 * lobe(a, Math.PI / 2, 0.12) * band(h, 0.245, 0.025);
 
     // --- cheeks ------------------------------------------------------------
     const side = lobe(a, 1.0, 0.4) + lobe(a, 2.14, 0.4);
-    scale += 0.045 * side * band(h, 0.44, 0.08);
+    scale += 0.045 * F.cheek * side * band(h, 0.44, 0.08);
     scale -= 0.03 * side * band(h, 0.3, 0.07);
 
     // --- occiput and nape --------------------------------------------------
@@ -521,11 +524,49 @@ const lerp = (a, b, t) => a + (b - a) * t;
  * exactly once and reused — skinning varies per player through the skeleton's
  * bone matrices, not through vertex data.
  */
-let GEO = null;
+/**
+ * Face variants.
+ *
+ * The body geometry was a single module-level singleton, so every player in the
+ * match had the identical skull, nose, jaw and brow. Two men who differ only in
+ * skin tone and shirt colour read as one man rendered twice — and at fourteen
+ * players that is the single most damaging thing about the squad.
+ *
+ * A face is now a small parameter vector, and the geometry cache is keyed on
+ * it. Eight variants is enough that no two players on the pitch share a face
+ * while the memory stays trivial: a body is ~3.5k vertices, so eight of them is
+ * under 2MB, and they are still shared across everyone who draws that variant.
+ */
+const FACE_VARIANTS = 8;
+
+function faceParams(index) {
+  // Deterministic per variant, and spread rather than random so the eight
+  // faces are actually distinguishable instead of eight samples of the mean.
+  const r = (n) => {
+    const v = Math.sin(index * 127.1 + n * 311.7) * 43758.5453;
+    return (v - Math.floor(v)) * 2 - 1;
+  };
+  return {
+    cranialW: 1 + r(1) * 0.06,
+    cranialD: 1 + r(2) * 0.05,
+    jawW: 1 + r(3) * 0.1,
+    chin: 1 + r(4) * 0.25,
+    brow: 1 + r(5) * 0.35,
+    noseLen: 1 + r(6) * 0.15,
+    noseW: 1 + r(7) * 0.18,
+    noseProj: 1 + r(8) * 0.2,
+    lips: 1 + r(9) * 0.2,
+    cheek: 1 + r(10) * 0.3,
+  };
+}
+
+/** Geometry cache, one entry per face variant. */
+const GEO_CACHE = new Map();
 let SKULL = null;
 
-function bodyGeometry(boneIndex) {
-  if (GEO) return GEO;
+function bodyGeometry(boneIndex, variant) {
+  if (GEO_CACHE.has(variant)) return GEO_CACHE.get(variant);
+  const F = faceParams(variant);
 
   const m = new MeshBuilder(boneIndex);
   const P = bindPositions(boneIndex);
@@ -549,11 +590,11 @@ function bodyGeometry(boneIndex) {
     // (DIM.shoulderW = 0.152), or the arms hang *inside* the ribcage. At 0.178
     // only 2.7cm of sleeve ever cleared the torso silhouette, so every player
     // appeared to be playing in a vest.
-    else if (t < 0.74) rx = lerp(0.128, 0.152, (t - 0.42) / 0.32); // chest
-    else if (t < 0.88) rx = lerp(0.152, 0.124, (t - 0.74) / 0.14); // trapezius
-    else rx = lerp(0.124, 0.056, (t - 0.88) / 0.12); // into the neck
+    else if (t < 0.74) rx = lerp(0.128, 0.168, (t - 0.42) / 0.32); // chest
+    else if (t < 0.9) rx = lerp(0.168, 0.15, (t - 0.74) / 0.16); // trapezius
+    else rx = lerp(0.15, 0.07, (t - 0.9) / 0.1); // into the neck
     rx *= S;
-    const rz = rx * (t < 0.42 ? 0.78 : 0.66);
+    const rz = rx * (t < 0.42 ? 0.78 : 0.68);
 
     // Below the waist the pelvis is rigid to `hips`; above it the spine takes
     // over. The blend band is generous so bending at the waist does not pinch.
@@ -662,10 +703,11 @@ function bodyGeometry(boneIndex) {
   // a 1.82m adult: 15.2cm max breadth at the parietals, 19cm max depth.
   const HEAD_W = [
     [0.0, 0.039], [0.18, 0.056], [0.3, 0.061], [0.5, 0.068],
-    [0.68, 0.076], [0.86, 0.063], [1.0, 0.004],
+    [0.68, 0.076], [0.86, 0.063], [0.92, 0.052], [0.97, 0.032], [1.0, 0.004],
   ];
   const HEAD_D = [
-    [0.0, 0.048], [0.3, 0.0775], [0.58, 0.095], [0.82, 0.085], [1.0, 0.004],
+    [0.0, 0.048], [0.3, 0.0775], [0.58, 0.095], [0.82, 0.085], [0.9, 0.068],
+    [0.97, 0.04], [1.0, 0.004],
   ];
 
   // Seam at the occiput so its normal crease hides under hair.
@@ -688,7 +730,7 @@ function bodyGeometry(boneIndex) {
       radial: FACE_RADIAL,
       seam: SEAM,
       // The neck is shadowed by the jaw above and the collar below.
-      ao: 1 - 0.3 * (1 - t) - 0.24 * t,
+      ao: 1 - 0.16 * (1 - t) - 0.13 * t,
     });
   }
 
@@ -699,8 +741,12 @@ function bodyGeometry(boneIndex) {
     const y = CHIN_Y + h * HEAD_H;
     // The face carries further forward of the neck axis than the occiput
     // carries back, so the whole ellipse is offset forward.
-    const rx = Math.max(profile(HEAD_W, h) * S, 0.003 * S);
-    const rz = Math.max(profile(HEAD_D, h) * S, 0.003 * S);
+    // Cranial width and depth vary above the brow; the jaw varies below it,
+    // so a broad-skulled player is not automatically a broad-jawed one.
+    const upper = Math.min(1, Math.max(0, (h - 0.4) / 0.3));
+    const wScale = lerp(F.jawW, F.cranialW, upper);
+    const rx = Math.max(profile(HEAD_W, h) * S * wScale, 0.003 * S);
+    const rz = Math.max(profile(HEAD_D, h) * S * lerp(1, F.cranialD, upper), 0.003 * S);
     headRings.push({
       p: [0, y, 0.012 * S],
       rx,
@@ -709,19 +755,28 @@ function bodyGeometry(boneIndex) {
       // Eye sockets, under the jaw, and where the ear meets the skull.
       ao: (a) =>
         1 -
-        0.34 * (lobe(a, 1.2252, 0.24) + lobe(a, 1.9164, 0.24)) * band(h, 0.5, 0.05) -
-        0.28 * band(h, 0.2, 0.06) -
-        0.14 * (lobe(a, 0, 0.3) + lobe(a, Math.PI, 0.3)) * band(h, 0.43, 0.07),
+        0.16 * (lobe(a, 1.2252, 0.24) + lobe(a, 1.9164, 0.24)) * band(h, 0.5, 0.05) -
+        0.14 * band(h, 0.2, 0.06) -
+        0.08 * (lobe(a, 0, 0.3) + lobe(a, Math.PI, 0.3)) * band(h, 0.43, 0.07),
       slot: SLOT.face,
       // V is the head's true height fraction, so the painted eyes land on the
       // modelled brow rather than 20% of a head above it.
       v: h,
       radial: FACE_RADIAL,
       seam: SEAM,
-      shape: headShape(h, HEAD_H, S),
+      shape: headShape(h, HEAD_H, S, F),
     });
   }
-  m.lathe(headRings);
+  const crownRing = m.lathe(headRings);
+  // Both lathes were left open, leaving an 8mm hole in the crown of every
+  // skull — visible straight through on the bald variants.
+  m.cap(
+    crownRing,
+    [0, CHIN_Y + HEAD_H, 0.012 * S],
+    SLOT.face,
+    [['head', 1]],
+    FACE_RADIAL
+  );
   addEars(m, {
     chinY: CHIN_Y,
     HEAD_H,
@@ -747,11 +802,26 @@ function bodyGeometry(boneIndex) {
 
     // Upper arm. The first rings sit *inside* the torso and are weighted to the
     // spine, so the shoulder is a smooth deltoid rather than a ball stuck on.
+    // Deltoid cap: three rings above the humerus so the shoulder has a mass
+    // of its own rather than the arm simply starting below the trapezius.
+    for (let i = 0; i < 3; i++) {
+      const t = i / 3;
+      rings.push({
+        p: [lerp(sh[0] * 0.62, sh[0] * 0.92, t), sh[1] + lerp(0.052, 0.02, t) * S, 0],
+        rx: lerp(0.055, 0.07, t) * S,
+        rz: lerp(0.055, 0.068, t) * S,
+        w: [['spine', 1 - t * 0.75], [`${key}.shoulder`, t * 0.75]],
+        slot: SLOT.shirt,
+        v: 0.62,
+        ao: 1 - 0.1 * (1 - t),
+      });
+    }
+
     const UP_STEPS = 9;
     for (let i = 0; i <= UP_STEPS; i++) {
       const t = i / UP_STEPS;
-      const y = lerp(sh[1] + 0.028 * S, el[1], t);
-      const x = lerp(sh[0] * 0.42, el[0], Math.min(t * 1.6, 1));
+      const y = lerp(sh[1] + 0.012 * S, el[1], t);
+      const x = lerp(sh[0] * 0.92, el[0], Math.min(t * 1.6, 1));
       const r = lerp(0.062, 0.046, t) * S;
       let w;
       if (t < 0.14) {
@@ -773,8 +843,8 @@ function bodyGeometry(boneIndex) {
         // hem sits in its own shadow.
         ao: (a) =>
           1 -
-          0.42 * band(t, 0.06, 0.16) * lobe(a, key === 'armL' ? 0 : Math.PI, 1.0) -
-          0.18 * band(t, 0.62, 0.05),
+          0.26 * band(t, 0.06, 0.16) * lobe(a, key === 'armL' ? 0 : Math.PI, 1.0) -
+          0.12 * band(t, 0.62, 0.05),
         slot: sleeve ? SLOT.shirt : SLOT.skin,
         // Sample the *body* of the shirt, not the yoke or the trim.
         //
@@ -945,11 +1015,17 @@ function bodyGeometry(boneIndex) {
         // Flatten the underside: a sole is flat, not a cylinder bottom.
         // Flatten the underside: a sole is flat, not a cylinder bottom. Clamped
         // against world y so the flat runs true whatever the ring's height is.
+        // Flatten the underside onto the turf. The previous clamp was
+        // `Math.max(0, -yAt)` — it lifted vertices out of the ground but never
+        // lowered them onto it, so only the heel touched and the forefoot
+        // floated 1.3cm for 85% of the boot's length. Snapping to y = 0 in
+        // both directions makes a flat sole rather than a rocker.
         shape: (a) => {
           const sn = Math.sin(a);
-          if (sn >= 0) return {};
+          if (sn > -0.35) return {};
           const yAt = footY + (1 - t) * 0.014 * S + sn * Math.max(h, 0.012 * S);
-          return { dy: Math.max(0, -yAt) };
+          const flat = Math.min(1, (-sn - 0.35) / 0.4);
+          return { dy: -yAt * flat };
         },
       });
     }
@@ -959,8 +1035,9 @@ function bodyGeometry(boneIndex) {
     ]);
   }
 
-  GEO = m.build();
-  return GEO;
+  const geo = m.build();
+  GEO_CACHE.set(variant, geo);
+  return geo;
 }
 
 // ---------------------------------------------------------------------------
@@ -1029,6 +1106,12 @@ function kitTextures(teamCfg, player) {
   return entry;
 }
 
+/** Free the per-variant body geometries. Used by teardown and by tests. */
+export function disposeGeometryCache() {
+  for (const g of GEO_CACHE.values()) g.dispose();
+  GEO_CACHE.clear();
+}
+
 export function disposeKitCache() {
   for (const [k, v] of KIT_CACHE) {
     if (k === 'rough') v.dispose();
@@ -1049,7 +1132,10 @@ export function createPlayer(player, teamCfg, opts = {}) {
   const isKeeper = player.isKeeper;
 
   const skeleton = buildSkeleton();
-  const geometry = bodyGeometry(skeleton.index);
+  // Face variant from the player's own id, so a given match always looks the
+  // same and two players in a squad rarely collide.
+  const variant = (player.id * 7 + player.number * 3) % FACE_VARIANTS;
+  const geometry = bodyGeometry(skeleton.index, variant);
 
   const shirtColor = isKeeper ? colors.keeper : colors.primary;
   const shortsColor = isKeeper ? colors.keeperShorts : colors.shorts;

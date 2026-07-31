@@ -698,14 +698,24 @@ export function makeRadialTexture(inner = 'rgba(0,0,0,0.55)', outer = 'rgba(0,0,
  * U = 0.25 — that is where the face goes. V runs from the neck (0) to the crown
  * (1); the skull occupies roughly the top three-quarters.
  */
-export function makeHeadTexture(renderer, size = 512) {
-  const c = canvas(size, size);
+export function makeHeadTexture(renderer, size = 1024) {
+  // The canvas must be PROPORTIONAL to what U and V actually span.
+  //
+  // U runs around the head's circumference (~0.54m); V runs its height
+  // (~0.20m). On a square canvas every brush is therefore 2.7x wider in world
+  // space than it is tall — the eye-socket shading alone came out 16.2cm across
+  // a 15.2cm face, which is the black bar over the eyes. Radii below are given
+  // as a fraction of head HEIGHT, so `H` is the reference for both axes and a
+  // circle drawn here is a circle on the head.
+  const W = size;
+  const H = Math.round(size * (0.199 / 0.539));
+  const c = canvas(W, H);
   const ctx = c.getContext('2d');
 
   // White base: the material colour multiplies through it, so one texture
   // serves every skin tone in the squad.
   ctx.fillStyle = '#ffffff';
-  ctx.fillRect(0, 0, size, size);
+  ctx.fillRect(0, 0, W, H);
 
   // Coordinates are given in *texture* space and converted here.
   //
@@ -713,11 +723,11 @@ export function makeHeadTexture(renderer, size = 512) {
   // row of the canvas. Drawing directly in canvas pixels put the mouth above
   // the eyes and the brow shading down on the throat. Working in v and
   // converting once removes the whole class of mistake.
-  const py = (v) => (1 - v) * size;
+  const py = (v) => (1 - v) * H;
   // U runs around the head from +X; the player faces +Z, so the face centre is
   // at U = 0.25. V is the head section's own parameter: the jaw sits at 0.2
   // and the crown at 1.0, matching the ring heights the geometry is built at.
-  const px = (u) => (0.5 + u) * size;
+  const px = (u) => (0.5 + u) * W;
 
   const V = { chin: 0.07, mouth: 0.19, nose: 0.3, eyes: 0.5, brow: 0.565, hairline: 0.72 };
 
@@ -734,27 +744,27 @@ export function makeHeadTexture(renderer, size = 512) {
   // eye sockets, the sides of the nose, under the cheekbones, under the lip
   // and along the jaw. This is what stops a head reading as a smooth solid,
   // and it matters far more than any single feature.
-  soft(0, V.chin - 0.03, size * 0.12, 'rgba(126,96,76,ALPHA)', 0.35); // under jaw
-  soft(-0.075, V.eyes - 0.02, size * 0.075, 'rgba(112,84,66,ALPHA)', 0.42);
-  soft(0.075, V.eyes - 0.02, size * 0.075, 'rgba(112,84,66,ALPHA)', 0.42);
-  soft(-0.038, V.nose - 0.02, size * 0.05, 'rgba(120,90,70,ALPHA)', 0.34); // nose sides
-  soft(0.038, V.nose - 0.02, size * 0.05, 'rgba(120,90,70,ALPHA)', 0.34);
-  soft(-0.105, V.mouth + 0.09, size * 0.085, 'rgba(122,92,72,ALPHA)', 0.3); // cheek hollow
-  soft(0.105, V.mouth + 0.09, size * 0.085, 'rgba(122,92,72,ALPHA)', 0.3);
-  soft(0, V.mouth - 0.035, size * 0.045, 'rgba(126,94,76,ALPHA)', 0.32); // under lip
+  soft(0, V.chin - 0.03, H * 0.12, 'rgba(126,96,76,ALPHA)', 0.18); // under jaw
+  soft(-0.075, V.eyes - 0.02, H * 0.075, 'rgba(112,84,66,ALPHA)', 0.2);
+  soft(0.075, V.eyes - 0.02, H * 0.075, 'rgba(112,84,66,ALPHA)', 0.2);
+  soft(-0.038, V.nose - 0.02, H * 0.05, 'rgba(120,90,70,ALPHA)', 0.17); // nose sides
+  soft(0.038, V.nose - 0.02, H * 0.05, 'rgba(120,90,70,ALPHA)', 0.17);
+  soft(-0.105, V.mouth + 0.09, H * 0.085, 'rgba(122,92,72,ALPHA)', 0.15); // cheek hollow
+  soft(0.105, V.mouth + 0.09, H * 0.085, 'rgba(122,92,72,ALPHA)', 0.15);
+  soft(0, V.mouth - 0.035, H * 0.045, 'rgba(126,94,76,ALPHA)', 0.16); // under lip
 
   // Warmth through the cheeks and nose — skin is never one flat hue.
-  soft(-0.09, V.nose - 0.06, size * 0.1, 'rgba(214,128,104,ALPHA)', 0.22);
-  soft(0.09, V.nose - 0.06, size * 0.1, 'rgba(214,128,104,ALPHA)', 0.22);
-  soft(0, V.nose, size * 0.055, 'rgba(220,136,110,ALPHA)', 0.2);
+  soft(-0.09, V.nose - 0.06, H * 0.1, 'rgba(214,128,104,ALPHA)', 0.22);
+  soft(0.09, V.nose - 0.06, H * 0.1, 'rgba(214,128,104,ALPHA)', 0.22);
+  soft(0, V.nose, H * 0.055, 'rgba(220,136,110,ALPHA)', 0.2);
   // Cooler around the jaw and temples, which is where beard shadow sits.
-  soft(0, V.chin + 0.06, size * 0.13, 'rgba(120,120,140,ALPHA)', 0.16);
+  soft(0, V.chin + 0.06, H * 0.13, 'rgba(120,120,140,ALPHA)', 0.16);
 
   // --- eyes ----------------------------------------------------------------
-  for (const du of [-0.0675, 0.0675]) {
+  for (const du of [-0.0583, 0.0583]) {
     // Lid crease above the eye.
     ctx.strokeStyle = 'rgba(92,66,50,0.32)';
-    ctx.lineWidth = size * 0.009;
+    ctx.lineWidth = H * 0.009;
     ctx.beginPath();
     ctx.moveTo(px(du - 0.032), py(V.eyes + 0.026));
     ctx.quadraticCurveTo(px(du), py(V.eyes + 0.036), px(du + 0.032), py(V.eyes + 0.024));
@@ -762,34 +772,34 @@ export function makeHeadTexture(renderer, size = 512) {
 
     ctx.fillStyle = '#efeae1';
     ctx.beginPath();
-    ctx.ellipse(px(du), py(V.eyes), size * 0.027, size * 0.0135, 0, 0, Math.PI * 2);
+    ctx.ellipse(px(du), py(V.eyes), H * 0.027, H * 0.0135, 0, 0, Math.PI * 2);
     ctx.fill();
 
     const iris = ctx.createRadialGradient(
-      px(du), py(V.eyes), 0, px(du), py(V.eyes), size * 0.014
+      px(du), py(V.eyes), 0, px(du), py(V.eyes), H * 0.014
     );
     iris.addColorStop(0, '#6a4a2e');
     iris.addColorStop(0.7, '#3d2a18');
     iris.addColorStop(1, '#241708');
     ctx.fillStyle = iris;
     ctx.beginPath();
-    ctx.ellipse(px(du), py(V.eyes), size * 0.0135, size * 0.0135, 0, 0, Math.PI * 2);
+    ctx.ellipse(px(du), py(V.eyes), H * 0.0135, H * 0.0135, 0, 0, Math.PI * 2);
     ctx.fill();
 
     ctx.fillStyle = '#100b05';
     ctx.beginPath();
-    ctx.ellipse(px(du), py(V.eyes), size * 0.0058, size * 0.0068, 0, 0, Math.PI * 2);
+    ctx.ellipse(px(du), py(V.eyes), H * 0.0058, H * 0.0068, 0, 0, Math.PI * 2);
     ctx.fill();
 
     // Catchlight — one small bright dot is most of what makes an eye alive.
     ctx.fillStyle = 'rgba(255,255,255,0.85)';
     ctx.beginPath();
-    ctx.arc(px(du - 0.006), py(V.eyes + 0.005), size * 0.004, 0, Math.PI * 2);
+    ctx.arc(px(du - 0.006), py(V.eyes + 0.005), H * 0.004, 0, Math.PI * 2);
     ctx.fill();
 
     // Upper lash line, heavier at the outer corner.
     ctx.strokeStyle = 'rgba(48,32,20,0.8)';
-    ctx.lineWidth = size * 0.007;
+    ctx.lineWidth = H * 0.007;
     ctx.lineCap = 'round';
     ctx.beginPath();
     ctx.moveTo(px(du - 0.028), py(V.eyes + 0.009));
@@ -797,7 +807,7 @@ export function makeHeadTexture(renderer, size = 512) {
     ctx.stroke();
     // Lower lid, much lighter.
     ctx.strokeStyle = 'rgba(120,88,66,0.4)';
-    ctx.lineWidth = size * 0.004;
+    ctx.lineWidth = H * 0.004;
     ctx.beginPath();
     ctx.moveTo(px(du - 0.024), py(V.eyes - 0.011));
     ctx.lineTo(px(du + 0.026), py(V.eyes - 0.01));
@@ -812,7 +822,7 @@ export function makeHeadTexture(renderer, size = 512) {
       ctx.strokeStyle = `rgba(${52 + Math.random() * 26},${36 + Math.random() * 20},${
         22 + Math.random() * 16
       },${0.5 + Math.random() * 0.45})`;
-      ctx.lineWidth = size * (0.0028 + Math.random() * 0.002);
+      ctx.lineWidth = H * (0.0028 + Math.random() * 0.002);
       ctx.beginPath();
       ctx.moveTo(px(u0), py(v0 - 0.007));
       ctx.lineTo(px(u0 + dir * 0.006), py(v0 + 0.008));
@@ -823,18 +833,18 @@ export function makeHeadTexture(renderer, size = 512) {
   // --- nose ----------------------------------------------------------------
   // Bridge highlight, then nostrils and the shadow under the tip.
   ctx.strokeStyle = 'rgba(255,246,236,0.3)';
-  ctx.lineWidth = size * 0.016;
+  ctx.lineWidth = H * 0.016;
   ctx.lineCap = 'round';
   ctx.beginPath();
   ctx.moveTo(px(0.002), py(V.brow - 0.01));
   ctx.lineTo(px(0), py(V.nose + 0.01));
   ctx.stroke();
 
-  soft(0, V.nose - 0.055, size * 0.035, 'rgba(104,74,58,ALPHA)', 0.4);
+  soft(0, V.nose - 0.055, H * 0.035, 'rgba(104,74,58,ALPHA)', 0.4);
   ctx.fillStyle = 'rgba(58,38,28,0.75)';
   for (const du of [-0.021, 0.021]) {
     ctx.beginPath();
-    ctx.ellipse(px(du), py(V.nose - 0.05), size * 0.0095, size * 0.0062, du < 0 ? 0.3 : -0.3, 0, Math.PI * 2);
+    ctx.ellipse(px(du), py(V.nose - 0.05), H * 0.0095, H * 0.0062, du < 0 ? 0.3 : -0.3, 0, Math.PI * 2);
     ctx.fill();
   }
 
@@ -858,7 +868,7 @@ export function makeHeadTexture(renderer, size = 512) {
 
   // Mouth line itself.
   ctx.strokeStyle = 'rgba(74,42,36,0.88)';
-  ctx.lineWidth = size * 0.0075;
+  ctx.lineWidth = H * 0.0075;
   ctx.beginPath();
   ctx.moveTo(px(-0.04), py(V.mouth));
   ctx.quadraticCurveTo(px(0), py(V.mouth + 0.007), px(0.04), py(V.mouth));
@@ -868,11 +878,11 @@ export function makeHeadTexture(renderer, size = 512) {
   // The ear tabs are modelled; this only paints the concha shadow so they are
   // not two blank paddles.
   for (const du of [-0.25, 0.25]) {
-    soft(du, V.eyes - 0.09, size * 0.045, 'rgba(112,78,58,ALPHA)', 0.45);
+    soft(du, V.eyes - 0.09, H * 0.045, 'rgba(112,78,58,ALPHA)', 0.22);
     ctx.strokeStyle = 'rgba(96,66,50,0.5)';
-    ctx.lineWidth = size * 0.007;
+    ctx.lineWidth = H * 0.007;
     ctx.beginPath();
-    ctx.arc(px(du), py(V.eyes - 0.09), size * 0.022, 0.6, 4.2);
+    ctx.arc(px(du), py(V.eyes - 0.09), H * 0.022, 0.6, 4.2);
     ctx.stroke();
   }
 
@@ -888,7 +898,7 @@ export function makeHeadTexture(renderer, size = 512) {
     if (Math.abs(v - V.mouth) < 0.032 && Math.abs(u) < 0.06) continue;
     if (Math.random() > 0.35 + spread * 0.5) continue;
     ctx.fillStyle = `rgba(64,48,38,${0.07 + Math.random() * 0.15})`;
-    ctx.fillRect(px(u), py(v), size * 0.0035, size * 0.0035);
+    ctx.fillRect(px(u), py(v), H * 0.0035, H * 0.0035);
   }
 
   // Pores and fine tonal break-up over the whole face.
@@ -899,7 +909,7 @@ export function makeHeadTexture(renderer, size = 512) {
     ctx.fillStyle = dark
       ? `rgba(122,96,78,${0.05 + Math.random() * 0.1})`
       : `rgba(255,236,216,${0.04 + Math.random() * 0.09})`;
-    ctx.fillRect(px(u), py(v), size * 0.003, size * 0.003);
+    ctx.fillRect(px(u), py(v), H * 0.003, H * 0.003);
   }
 
   // Sideburn shading where the scalp cap meets the temple.
@@ -922,14 +932,18 @@ export function makeHeadTexture(renderer, size = 512) {
  *
  * Non-colour data, so no sRGB conversion. Darker = glossier.
  */
-export function makeSkinRoughness(renderer, size = 256) {
-  const c = canvas(size, size);
+export function makeSkinRoughness(renderer, size = 512) {
+  // Same UV layout as the head colour and normal maps, so the same
+  // proportional canvas — a square one stretches every highlight 2.7x wide.
+  const W = size;
+  const H = Math.round(size * (0.199 / 0.539));
+  const c = canvas(W, H);
   const ctx = c.getContext('2d');
   ctx.fillStyle = '#c4c4c4'; // fairly rough by default
-  ctx.fillRect(0, 0, size, size);
+  ctx.fillRect(0, 0, W, H);
 
-  const py = (v) => (1 - v) * size;
-  const px = (u) => (0.5 + u) * size;
+  const py = (v) => (1 - v) * H;
+  const px = (u) => (0.5 + u) * W;
   const shine = (u, v, r, amount) => {
     const g = ctx.createRadialGradient(px(u), py(v), 0, px(u), py(v), r);
     g.addColorStop(0, `rgba(90,90,90,${amount})`);
@@ -938,11 +952,11 @@ export function makeSkinRoughness(renderer, size = 256) {
     ctx.fillRect(px(u) - r, py(v) - r, r * 2, r * 2);
   };
 
-  shine(0, 0.74, size * 0.1, 0.75); // forehead
-  shine(0, 0.55, size * 0.05, 0.8); // nose bridge and tip
-  shine(-0.085, 0.6, size * 0.06, 0.5); // cheekbones
-  shine(0.085, 0.6, size * 0.06, 0.5);
-  shine(0, 0.31, size * 0.05, 0.4); // chin
+  shine(0, 0.74, H * 0.1, 0.75); // forehead
+  shine(0, 0.55, H * 0.05, 0.8); // nose bridge and tip
+  shine(-0.085, 0.6, H * 0.06, 0.5); // cheekbones
+  shine(0.085, 0.6, H * 0.06, 0.5);
+  shine(0, 0.31, H * 0.05, 0.4); // chin
 
   // Break it up so the highlight is not a perfect airbrushed oval.
   for (let i = 0; i < 2600; i++) {
@@ -972,12 +986,17 @@ export function makeSkinRoughness(renderer, size = 256) {
  * face centre at 0.5 (the ring seam is at the occiput) and V is true height
  * fraction, 0 at the chin.
  */
-export function makeHeadNormal(renderer, size = 512) {
-  const c = canvas(size, size);
+export function makeHeadNormal(renderer, size = 1024) {
+  // Proportional to what U and V span, exactly as makeHeadTexture is — a
+  // square canvas stretches every feature 2.7x horizontally, and the Sobel
+  // below then reads that stretch as 2.7x too much horizontal tilt.
+  const W = size;
+  const H = Math.round(size * (0.199 / 0.539));
+  const c = canvas(W, H);
   const ctx = c.getContext('2d');
 
-  const py = (v) => (1 - v) * size;
-  const px = (u) => (0.5 + u) * size;
+  const py = (v) => (1 - v) * H;
+  const px = (u) => (0.5 + u) * W;
   const V = { chin: 0.07, mouth: 0.19, nose: 0.3, eyes: 0.5, brow: 0.565, hairline: 0.72 };
 
   // Mid-grey is "flat"; lighter is raised.
@@ -1010,32 +1029,32 @@ export function makeHeadNormal(renderer, size = 512) {
   };
 
   // Brow ridges, raised.
-  bump(-0.06, V.brow, size * 0.05, 0.5, 0.5);
-  bump(0.06, V.brow, size * 0.05, 0.5, 0.5);
+  bump(-0.06, V.brow, H * 0.05, 0.5, 0.5);
+  bump(0.06, V.brow, H * 0.05, 0.5, 0.5);
   // Eye sockets, sunk, with the lid crease above each.
-  bump(-0.0675, V.eyes, size * 0.045, -0.45, 0.7);
-  bump(0.0675, V.eyes, size * 0.045, -0.45, 0.7);
-  for (const du of [-0.0675, 0.0675]) {
-    ridge(px(du - 0.03), py(V.eyes + 0.022), px(du + 0.03), py(V.eyes + 0.024), size * 0.01, -0.5);
+  bump(-0.0583, V.eyes, H * 0.045, -0.45, 0.7);
+  bump(0.0583, V.eyes, H * 0.045, -0.45, 0.7);
+  for (const du of [-0.0583, 0.0583]) {
+    ridge(px(du - 0.03), py(V.eyes + 0.022), px(du + 0.03), py(V.eyes + 0.024), H * 0.01, -0.5);
     // Eyeball itself bulges slightly inside the socket.
-    bump(du, V.eyes, size * 0.02, 0.35, 0.8);
+    bump(du, V.eyes, H * 0.02, 0.35, 0.8);
   }
 
   // Nose: bridge ridge, tip, and the wings either side.
-  ridge(px(0), py(V.brow - 0.01), px(0), py(V.nose + 0.02), size * 0.026, 0.45);
-  bump(0, V.nose + 0.01, size * 0.028, 0.5);
-  bump(-0.024, V.nose - 0.012, size * 0.02, 0.35);
-  bump(0.024, V.nose - 0.012, size * 0.02, 0.35);
+  ridge(px(0), py(V.brow - 0.01), px(0), py(V.nose + 0.02), H * 0.026, 0.45);
+  bump(0, V.nose + 0.01, H * 0.028, 0.5);
+  bump(-0.024, V.nose - 0.012, H * 0.02, 0.35);
+  bump(0.024, V.nose - 0.012, H * 0.02, 0.35);
   // Nostrils, sunk.
-  bump(-0.019, V.nose - 0.028, size * 0.012, -0.6);
-  bump(0.019, V.nose - 0.028, size * 0.012, -0.6);
+  bump(-0.019, V.nose - 0.028, H * 0.012, -0.6);
+  bump(0.019, V.nose - 0.028, H * 0.012, -0.6);
   // Philtrum groove.
-  ridge(px(0), py(V.nose - 0.04), px(0), py(V.mouth + 0.02), size * 0.012, -0.4);
+  ridge(px(0), py(V.nose - 0.04), px(0), py(V.mouth + 0.02), H * 0.012, -0.4);
 
   // Nasolabial folds — the single most recognisable crease on a face.
   for (const side of [-1, 1]) {
     ctx.strokeStyle = 'rgba(96,96,96,0.85)';
-    ctx.lineWidth = size * 0.011;
+    ctx.lineWidth = H * 0.011;
     ctx.beginPath();
     ctx.moveTo(px(side * 0.028), py(V.nose - 0.03));
     ctx.quadraticCurveTo(
@@ -1048,29 +1067,29 @@ export function makeHeadNormal(renderer, size = 512) {
   }
 
   // Lips: upper rolls back, lower rolls out, with the mouth line sunk.
-  bump(0, V.mouth + 0.012, size * 0.03, 0.3, 0.45);
-  bump(0, V.mouth - 0.016, size * 0.032, 0.42, 0.4);
-  ridge(px(-0.04), py(V.mouth), px(0.04), py(V.mouth), size * 0.009, -0.55);
+  bump(0, V.mouth + 0.012, H * 0.03, 0.3, 0.45);
+  bump(0, V.mouth - 0.016, H * 0.032, 0.42, 0.4);
+  ridge(px(-0.04), py(V.mouth), px(0.04), py(V.mouth), H * 0.009, -0.55);
   // Chin pad and the crease above it.
-  bump(0, V.chin + 0.04, size * 0.045, 0.3, 0.7);
-  ridge(px(-0.022), py(V.mouth - 0.045), px(0.022), py(V.mouth - 0.045), size * 0.012, -0.3);
+  bump(0, V.chin + 0.04, H * 0.045, 0.3, 0.7);
+  ridge(px(-0.022), py(V.mouth - 0.045), px(0.022), py(V.mouth - 0.045), H * 0.012, -0.3);
 
   // Cheekbones raised, hollows beneath.
-  bump(-0.088, V.eyes - 0.05, size * 0.055, 0.3, 0.8);
-  bump(0.088, V.eyes - 0.05, size * 0.055, 0.3, 0.8);
-  bump(-0.095, V.mouth + 0.05, size * 0.05, -0.25, 0.9);
-  bump(0.095, V.mouth + 0.05, size * 0.05, -0.25, 0.9);
+  bump(-0.088, V.eyes - 0.05, H * 0.055, 0.3, 0.8);
+  bump(0.088, V.eyes - 0.05, H * 0.055, 0.3, 0.8);
+  bump(-0.095, V.mouth + 0.05, H * 0.05, -0.25, 0.9);
+  bump(0.095, V.mouth + 0.05, H * 0.05, -0.25, 0.9);
 
   // Ear concha, sunk, on the modelled tabs.
-  bump(-0.25, V.eyes - 0.09, size * 0.03, -0.4);
-  bump(0.25, V.eyes - 0.09, size * 0.03, -0.4);
+  bump(-0.25, V.eyes - 0.09, H * 0.03, -0.4);
+  bump(0.25, V.eyes - 0.09, H * 0.03, -0.4);
 
   // Temple hollows.
-  bump(-0.12, V.brow + 0.02, size * 0.04, -0.2, 0.9);
-  bump(0.12, V.brow + 0.02, size * 0.04, -0.2, 0.9);
+  bump(-0.12, V.brow + 0.02, H * 0.04, -0.2, 0.9);
+  bump(0.12, V.brow + 0.02, H * 0.04, -0.2, 0.9);
 
   // Forehead: a shallow central rise with the frontal eminences either side.
-  bump(0, V.brow + 0.09, size * 0.07, 0.18, 0.8);
+  bump(0, V.brow + 0.09, H * 0.07, 0.18, 0.8);
 
   // Stubble and pore grain — high-frequency noise is what stops skin reading
   // as a smooth plastic shell once the light moves across it.
@@ -1080,7 +1099,7 @@ export function makeHeadNormal(renderer, size = 512) {
     const beard = v < V.mouth + 0.04 && Math.abs(u) < 0.16;
     const amp = beard ? 60 + Math.random() * 60 : 112 + Math.random() * 32;
     ctx.fillStyle = `rgba(${amp},${amp},${amp},${beard ? 0.5 : 0.28})`;
-    ctx.fillRect(px(u), py(v), size * 0.0035, size * 0.0035);
+    ctx.fillRect(px(u), py(v), H * 0.0035, H * 0.0035);
   }
 
   // Blur so the Sobel below sees slopes rather than steps.
@@ -1094,7 +1113,7 @@ export function makeHeadNormal(renderer, size = 512) {
   const at = (x, y) => src[((y & (size - 1)) * size + (x & (size - 1))) * 4] / 255;
   // 2.6 over-drove every feature into a carved-mask look. Skin detail should
   // catch the light, not sculpt a second face on top of the modelled one.
-  const STRENGTH = 1.35;
+  const STRENGTH = 1.5;
   for (let y = 0; y < size; y++) {
     for (let x = 0; x < size; x++) {
       const dx =
