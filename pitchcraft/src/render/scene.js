@@ -5,9 +5,9 @@ import { createPlayer } from './character.js';
 import { animatePlayer, createAnimState } from './animation.js';
 import { BroadcastCamera } from './camera.js';
 import { Effects, createBall, ContactShadows } from './effects.js';
-import { TEAMS, GRAPHICS, PITCH, BALL, PLAYER, HALF_LENGTH } from '../core/config.js';
+import { TEAMS, GRAPHICS, PITCH, BALL, HALF_LENGTH } from '../core/config.js';
 import { EV } from '../core/events.js';
-import { clamp, lerp } from '../core/vec.js';
+import { clamp } from '../core/vec.js';
 
 /**
  * The renderer. Owns the Three.js scene and mirrors simulation state onto it

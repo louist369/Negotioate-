@@ -4,7 +4,7 @@
  *
  *   node tools/headlessMatch.js [matches] [--verbose]
  */
-import { Match, Phase } from '../src/match/match.js';
+import { Match } from '../src/match/match.js';
 import { EV } from '../src/core/events.js';
 import { SIM, MATCH } from '../src/core/config.js';
 

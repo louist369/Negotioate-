@@ -1,7 +1,7 @@
 import * as THREE from 'three';
-import { BALL, PITCH } from '../core/config.js';
+import { BALL } from '../core/config.js';
 import { makeRadialTexture, makeBallTexture } from './textures.js';
-import { clamp, lerp } from '../core/vec.js';
+import { clamp } from '../core/vec.js';
 
 /**
  * Ball mesh plus the transient visual effects: contact shadows, turf spray on

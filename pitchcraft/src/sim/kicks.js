@@ -1,5 +1,5 @@
-import { KICK, BALL, PLAYER, HALF_LENGTH, HALF_GOAL, PITCH } from '../core/config.js';
-import { clamp, lerp, dist2, norm2, v2 } from '../core/vec.js';
+import { KICK, BALL, HALF_LENGTH, HALF_GOAL, PITCH } from '../core/config.js';
+import { clamp, lerp, dist2, v2 } from '../core/vec.js';
 
 const tmpA = v2();
 const tmpB = v2();

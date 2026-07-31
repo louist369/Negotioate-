@@ -4,18 +4,8 @@ import { GoalkeeperAI } from '../ai/goalkeeperAI.js';
 import { PlayerState } from '../sim/player.js';
 import { EventBus, EV } from '../core/events.js';
 import { Rng } from '../core/rng.js';
-import {
-  MATCH,
-  PITCH,
-  BALL,
-  PLAYER,
-  AI,
-  TEAMS,
-  HALF_LENGTH,
-  HALF_WIDTH,
-  HALF_GOAL,
-} from '../core/config.js';
-import { clamp, dist2, distSq2 } from '../core/vec.js';
+import { MATCH, PITCH, BALL, PLAYER, AI, TEAMS, HALF_LENGTH, HALF_WIDTH, HALF_GOAL } from '../core/config.js';
+import { clamp, dist2 } from '../core/vec.js';
 import { buildKick, laneSafety } from '../sim/kicks.js';
 
 export const Phase = {

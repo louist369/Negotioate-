@@ -1,8 +1,8 @@
 import { Action } from './input.js';
 import { PlayerState } from '../sim/player.js';
-import { PLAYER, KICK, MATCH, HALF_LENGTH, HALF_GOAL, HALF_WIDTH } from '../core/config.js';
-import { clamp, lerp, dist2, distSq2 } from '../core/vec.js';
-import { selectPassTarget, buildKick, pressureOn, shotAimPoint } from '../sim/kicks.js';
+import { PLAYER, KICK, HALF_LENGTH, HALF_GOAL } from '../core/config.js';
+import { clamp, dist2, distSq2 } from '../core/vec.js';
+import { selectPassTarget, buildKick, pressureOn } from '../sim/kicks.js';
 import { EV } from '../core/events.js';
 import { Phase } from '../match/match.js';
 

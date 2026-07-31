@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { CAMERA, PITCH, HALF_LENGTH, HALF_WIDTH } from '../core/config.js';
+import { CAMERA, HALF_LENGTH, HALF_WIDTH } from '../core/config.js';
 import { clamp, lerp } from '../core/vec.js';
 
 /**

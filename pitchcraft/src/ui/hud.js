@@ -1,6 +1,6 @@
 import { EV } from '../core/events.js';
 import { Phase } from '../match/match.js';
-import { TEAMS, MATCH, HALF_LENGTH, HALF_WIDTH } from '../core/config.js';
+import { TEAMS, HALF_LENGTH, HALF_WIDTH } from '../core/config.js';
 import { clamp } from '../core/vec.js';
 
 /**

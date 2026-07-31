@@ -5,7 +5,7 @@ import { PlayerController } from './control/playerController.js';
 import { AudioEngine } from './audio/audio.js';
 import { HUD } from './ui/hud.js';
 import { PerfMonitor } from './core/perf.js';
-import { SIM, MATCH } from './core/config.js';
+import { SIM } from './core/config.js';
 import { EV } from './core/events.js';
 
 /**

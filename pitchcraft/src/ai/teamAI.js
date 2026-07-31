@@ -1,16 +1,9 @@
-import { AI, PLAYER, KICK, PITCH, BALL, HALF_LENGTH, HALF_WIDTH, HALF_GOAL } from '../core/config.js';
+import { AI, PLAYER, KICK, BALL, HALF_LENGTH, HALF_WIDTH, HALF_GOAL } from '../core/config.js';
 
 const BALL_RADIUS = BALL.radius;
 import { PlayerState } from '../sim/player.js';
-import { clamp, lerp, dist2, distSq2, v2, smoothstep } from '../core/vec.js';
-import {
-  selectPassTarget,
-  laneSafety,
-  pressureOn,
-  buildKick,
-  shotAimPoint,
-  containTarget,
-} from '../sim/kicks.js';
+import { clamp, lerp, dist2, distSq2, smoothstep } from '../core/vec.js';
+import { laneSafety, pressureOn, buildKick, shotAimPoint, containTarget } from '../sim/kicks.js';
 import { EV } from '../core/events.js';
 
 const TeamPhase = {

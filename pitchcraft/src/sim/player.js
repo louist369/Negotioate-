@@ -1,5 +1,5 @@
 import { PLAYER, ROLE_ATTRS } from '../core/config.js';
-import { clamp, lerp, turnToward, norm2, len2, headingOf } from '../core/vec.js';
+import { clamp, lerp, turnToward } from '../core/vec.js';
 
 export const PlayerState = {
   IDLE: 'idle',

@@ -2,7 +2,7 @@ import { KEEPER, PITCH, BALL, PLAYER, KICK, HALF_LENGTH, HALF_WIDTH, HALF_GOAL }
 import { PlayerState } from '../sim/player.js';
 import { clamp, lerp, dist2, smoothstep } from '../core/vec.js';
 import { EV } from '../core/events.js';
-import { selectPassTarget, buildKick, laneSafety } from '../sim/kicks.js';
+import { buildKick, laneSafety } from '../sim/kicks.js';
 
 /**
  * Goalkeeper behaviour as an explicit state machine:
