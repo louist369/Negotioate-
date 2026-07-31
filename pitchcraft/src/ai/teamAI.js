@@ -62,6 +62,9 @@ export class TeamAI {
     else if (owner) this.phase = TeamPhase.DEFEND;
     else this.phase = TeamPhase.LOOSE;
 
+    // Job assignment must know who the human has taken over, so his job goes to
+    // somebody else instead of simply going undone.
+    this.humanControlled = humanControlled;
     if (rethink) this.assignJobs();
 
     for (const p of this.mates) {
@@ -90,7 +93,12 @@ export class TeamAI {
     const opps = this.opponents;
     this.assignments.clear();
 
-    const outfield = mates.filter((p) => !p.isKeeper);
+    // The human-controlled player is not available to carry out a job: he does
+    // whatever his human does. Leaving him in the pool meant the AI would hand
+    // him "press" or "chase", then skip him when driving players — so nobody
+    // pressed, nobody chased, and the team defended a man short. Excluding him
+    // here makes a real player take the job instead.
+    const outfield = mates.filter((p) => !p.isKeeper && p !== this.humanControlled);
 
     // Sort by distance to ball — the front of this list does the chasing.
     const byBall = [...outfield].sort((a, b) => distSq2(a.pos, ball.pos) - distSq2(b.pos, ball.pos));
@@ -482,7 +490,7 @@ export class TeamAI {
     const odds = aggression * (goalSide ? 1 : 0.4) * clamp(1.4 - d / PLAYER.tackleRange, 0, 1);
 
     // Rate is per second, so the outcome doesn't change with the physics step.
-    if (this.rng.next() < odds * dt * AI.tackleRate) {
+    if (this.rng.next() < odds * dt * (this.difficulty.tackleRate ?? AI.tackleRate)) {
       p.startTackle(ball.pos.x - p.pos.x, ball.pos.z - p.pos.z);
       this.bus.emit(EV.TACKLE, { player: p, attempt: true, pos: { ...p.pos } });
     }
@@ -511,7 +519,7 @@ export class TeamAI {
       const rangeQuality = smoothstep(AI.shootRangeBase + 9, 6, distToGoal);
       const shootUtility = rangeQuality * angleQuality * shotLane * (1 + pressure * 0.25);
 
-      if (shootUtility > AI.shootConfidence) {
+      if (shootUtility > (this.difficulty.shootConfidence ?? AI.shootConfidence)) {
         this.executeKick(p, 'shot', clamp(0.55 + distToGoal / 34, 0.4, 1), aim, pressure);
         return;
       }
@@ -712,7 +720,18 @@ export class TeamAI {
     const aimX = target.x - ball.pos.x;
     const aimZ = target.z - ball.pos.z;
 
-    const { vel, spin } = buildKick(p, ball, type, clamp(power, 0, 1), aimX, aimZ, target, pressure, this.rng);
+    const { vel, spin } = buildKick(
+      p,
+      ball,
+      type,
+      clamp(power, 0, 1),
+      aimX,
+      aimZ,
+      target,
+      pressure,
+      this.rng,
+      this.difficulty.errorScale ?? 1
+    );
 
     ball.owner = null;
     p.hasBall = false;

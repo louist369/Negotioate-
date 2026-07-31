@@ -219,7 +219,7 @@ export function laneSafety(from, to, opponents, corridor = 1.5) {
  * Build the velocity for a kick. `type` is 'pass' | 'through' | 'loft' | 'shot' | 'clear'.
  * Direction blends the player's raw input with the assisted target by `assist`.
  */
-export function buildKick(player, ball, type, power, aimX, aimZ, target, pressure, rng) {
+export function buildKick(player, ball, type, power, aimX, aimZ, target, pressure, rng, errorScale = 1) {
   const outVel = { x: 0, y: 0, z: 0 };
   let spin = 0;
 
@@ -245,9 +245,10 @@ export function buildKick(player, ball, type, power, aimX, aimZ, target, pressur
 
   const powerAttr = player.attrs.power;
   const err =
-    KICK.baseError +
-    KICK.pressureError * pressure * (1 - player.attrs.control * 0.35) +
-    KICK.powerError * power;
+    (KICK.baseError +
+      KICK.pressureError * pressure * (1 - player.attrs.control * 0.35) +
+      KICK.powerError * power) *
+    errorScale;
   const errAngle = rng ? rng.gauss(err) : 0;
   const ca = Math.cos(errAngle);
   const sa = Math.sin(errAngle);

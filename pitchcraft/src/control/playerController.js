@@ -7,6 +7,23 @@ import { EV } from '../core/events.js';
 import { Phase } from '../match/match.js';
 
 /**
+ * Kick keys that build power while held. Tuple is [action, kick type, seconds
+ * to reach full charge].
+ */
+const CHARGEABLE = [
+  [Action.SHOOT, 'shot', KICK.maxChargeTime],
+  [Action.LOFT, 'loft', KICK.maxChargeTime],
+  [Action.PASS, 'pass', KICK.maxChargeTime * 0.75],
+];
+
+/** Charge (0..1) to kick power, per kick type. */
+const KICK_POWER = {
+  shot: (c) => clamp(c * 0.85 + 0.25, 0.28, 1),
+  loft: (c) => clamp(c * 0.8 + 0.3, 0.3, 1),
+  pass: (c) => clamp(c * 0.7 + 0.3, 0.25, 1),
+};
+
+/**
  * Translates player input into simulation actions for one team.
  *
  * Design notes:
@@ -27,8 +44,7 @@ export class PlayerController {
 
     this.controlledPlayer = null;
     this.manualSwitchTime = -99;
-    this.charge = 0;
-    this.chargeAction = null;
+    this.charges = { shot: 0, loft: 0, pass: 0 };
     this.skillCooldown = 0;
     this.lastAxis = { x: 0, z: 0 };
     this.camBasis = { fwdX: 0, fwdZ: -1, rightX: 1, rightZ: 0 };
@@ -40,6 +56,25 @@ export class PlayerController {
 
   get team() {
     return this.world.teams[this.teamId];
+  }
+
+  clearCharges() {
+    this.charges.shot = 0;
+    this.charges.loft = 0;
+    this.charges.pass = 0;
+  }
+
+  /** Largest active charge, for the HUD power meter. */
+  get charge() {
+    return Math.max(this.charges.shot, this.charges.loft, this.charges.pass);
+  }
+
+  /** Which kick the power meter is currently showing. */
+  get chargeAction() {
+    const { shot, loft, pass } = this.charges;
+    const best = Math.max(shot, loft, pass);
+    if (best <= 0) return null;
+    return best === shot ? 'shot' : best === loft ? 'loft' : 'pass';
   }
 
   setCameraBasis(fwdX, fwdZ) {
@@ -325,32 +360,33 @@ export class PlayerController {
     const hasBall = ball.owner === p;
 
     // --- charge -----------------------------------------------------------
-    const shootDown = input.isDown(Action.SHOOT);
-    if (shootDown && hasBall) {
-      this.charge = clamp(this.charge + dt / KICK.maxChargeTime, 0, 1);
-      this.chargeAction = 'shot';
-    } else if (input.isDown(Action.LOFT) && hasBall) {
-      this.charge = clamp(this.charge + dt / KICK.maxChargeTime, 0, 1);
-      this.chargeAction = 'loft';
-    } else if (input.isDown(Action.PASS) && hasBall) {
-      this.charge = clamp(this.charge + dt / (KICK.maxChargeTime * 0.75), 0, 1);
-      this.chargeAction = 'pass';
+    //
+    // Each kick key carries its OWN charge. A single shared `chargeAction` was
+    // fragile: on the frame the shoot key is released it is no longer "down", so
+    // if any other kick key happened to be held the charge was reassigned to
+    // that action and the shot was silently dropped. Pressing shoot and getting
+    // nothing is the worst possible failure in a football game.
+    for (const [action, key, rate] of CHARGEABLE) {
+      if (hasBall && input.isDown(action)) {
+        this.charges[key] = clamp(this.charges[key] + dt / rate, 0, 1);
+      }
     }
 
-    if (!hasBall) {
-      this.charge = 0;
-      this.chargeAction = null;
-    }
+    if (!hasBall) this.clearCharges();
 
     // --- release ----------------------------------------------------------
     if (hasBall && p.kickCooldown <= 0) {
-      if (input.wasReleased(Action.SHOOT) && this.chargeAction === 'shot') {
-        this.fire(match, 'shot', clamp(this.charge * 0.85 + 0.25, 0.28, 1), dir, mag);
-      } else if (input.wasReleased(Action.LOFT) && this.chargeAction === 'loft') {
-        this.fire(match, 'loft', clamp(this.charge * 0.8 + 0.3, 0.3, 1), dir, mag);
-      } else if (input.wasReleased(Action.PASS) && this.chargeAction === 'pass') {
-        this.fire(match, 'pass', clamp(this.charge * 0.7 + 0.3, 0.25, 1), dir, mag);
-      } else if (input.wasPressed(Action.THROUGH)) {
+      let fired = false;
+      for (const [action, key] of CHARGEABLE) {
+        if (!input.wasReleased(action)) continue;
+        // A tap still counts: any hold at all leaves a non-zero charge, and a
+        // release with no accumulated charge falls back to a light touch.
+        const power = KICK_POWER[key](this.charges[key]);
+        this.fire(match, key, power, dir, mag);
+        fired = true;
+        break;
+      }
+      if (!fired && input.wasPressed(Action.THROUGH)) {
         this.fire(match, 'through', 0.7, dir, mag);
       }
     }
@@ -465,8 +501,7 @@ export class PlayerController {
     p.triggerKickAnim(type);
     ball.launch(p, vel, spin, type, target ? { x: target.x, z: target.z } : null);
 
-    this.charge = 0;
-    this.chargeAction = null;
+    this.clearCharges();
 
     if (type === 'shot') {
       this.bus.emit(EV.SHOT, { player: p, target, power, pos: { ...ball.pos } });

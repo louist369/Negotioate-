@@ -23,7 +23,12 @@ class App {
     this.hudRoot = document.getElementById('hud');
     this.loading = document.getElementById('loading');
 
-    this.match = new Match({ seed: (Math.random() * 1e9) | 0, humanTeam: 0 });
+    const params = new URLSearchParams(location.search);
+    const difficulty = ['easy', 'normal', 'hard'].includes(params.get('difficulty'))
+      ? params.get('difficulty')
+      : 'normal';
+
+    this.match = new Match({ seed: (Math.random() * 1e9) | 0, humanTeam: 0, difficulty });
     this.bus = this.match.bus;
 
     this.input = new InputManager(window);
@@ -37,7 +42,6 @@ class App {
 
     // Quality can be forced via ?quality=low|medium|high. The automated browser
     // harness uses `low` because it runs on a software rasteriser.
-    const params = new URLSearchParams(location.search);
     const quality = ['low', 'medium', 'high'].includes(params.get('quality'))
       ? params.get('quality')
       : 'high';
@@ -113,6 +117,15 @@ class App {
     this.controller.selectNearestToBall();
     this.hud.hideOverlay();
     this.accumulator = 0;
+  }
+
+  /** Change difficulty and start a fresh match at that level. */
+  setDifficulty(level) {
+    this.match.resetMatch((Math.random() * 1e9) | 0, level);
+    this.controller.selectNearestToBall();
+    this.hud.hideOverlay();
+    this.accumulator = 0;
+    return level;
   }
 
   /**

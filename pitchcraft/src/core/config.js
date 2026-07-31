@@ -191,13 +191,64 @@ export const AI = {
   // Base probability a committed tackle wins the ball from a carrier.
   tackleWinBase: 0.5,
 
-  // Difficulty scalars (applied to the AI team).
+  // Baseline difficulty; see DIFFICULTY below for the tiers that override it.
   difficulty: {
     reaction: 0.16,
     passAccuracy: 0.9,
     aggression: 1.0,
+    tackleRate: 2.2,
+    shootConfidence: 0.34,
+    keeperSkill: 0,
+    errorScale: 1,
+    speed: 1,
   },
 };
+
+/**
+ * Difficulty tiers, applied to the *opponent* only — the player's own AI
+ * team-mates always play at full strength, because being let down by your own
+ * side is not a difficulty setting, it's a bug.
+ *
+ * `reaction` is extra goalkeeper reaction delay in seconds (higher = slower),
+ * `keeperSkill` shifts save probability, and the rest scale the field players'
+ * aggression, tackling frequency, willingness to shoot and passing precision.
+ */
+export const DIFFICULTY = {
+  easy: {
+    reaction: 0.34,
+    passAccuracy: 0.68,
+    aggression: 0.5,
+    tackleRate: 1.0,
+    shootConfidence: 0.58,
+    keeperSkill: -0.3,
+    // The levers that actually decide matches: execution precision and pace.
+    errorScale: 2.6,
+    speed: 0.9,
+  },
+  normal: {
+    reaction: 0.22,
+    passAccuracy: 0.82,
+    aggression: 0.76,
+    tackleRate: 1.6,
+    shootConfidence: 0.44,
+    keeperSkill: -0.1,
+    errorScale: 1.6,
+    speed: 0.96,
+  },
+  hard: {
+    reaction: 0.15,
+    passAccuracy: 0.92,
+    aggression: 1.0,
+    tackleRate: 2.2,
+    shootConfidence: 0.34,
+    keeperSkill: 0.05,
+    errorScale: 1.0,
+    speed: 1.0,
+  },
+};
+
+/** Strength the player's own team-mates always play at. */
+export const TEAMMATE_SKILL = DIFFICULTY.hard;
 
 export const MATCH = {
   durationSeconds: 300,

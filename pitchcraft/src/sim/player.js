@@ -54,6 +54,9 @@ export class Player {
 
     const attrs = ROLE_ATTRS[role] || ROLE_ATTRS.CM;
     this.attrs = { ...attrs };
+    // Difficulty handicap, kept separate from role attributes so it can be
+    // changed mid-session without permanently scaling the underlying values.
+    this.skill = { speed: 1, accel: 1 };
 
     // AI scratch state.
     this.ai = {
@@ -85,7 +88,7 @@ export class Player {
 
   get maxSpeed() {
     const base = this.wantSprint && !this.exhausted ? PLAYER.sprintSpeed : PLAYER.runSpeed;
-    let s = base * this.attrs.speed;
+    let s = base * this.attrs.speed * this.skill.speed;
     if (this.hasBall) s *= PLAYER.dribbleSpeedFactor;
     // Low stamina bleeds top speed even at a jog.
     s *= lerp(0.86, 1, clamp(this.stamina * 1.6, 0, 1));
@@ -187,7 +190,10 @@ export class Player {
 
       // Reverse braking: input opposing velocity bleeds speed hard first.
       const alignment = speed > 0.2 ? (this.vel.x * hx + this.vel.z * hz) / speed : 1;
-      let accel = (this.wantSprint && !this.exhausted ? PLAYER.sprintAccel : PLAYER.accel) * this.attrs.accel;
+      let accel =
+        (this.wantSprint && !this.exhausted ? PLAYER.sprintAccel : PLAYER.accel) *
+        this.attrs.accel *
+        this.skill.accel;
       if (alignment < 0) accel *= PLAYER.reverseBrake;
 
       const vx = this.vel.x + hx * accel * dt;

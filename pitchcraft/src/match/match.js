@@ -4,7 +4,19 @@ import { GoalkeeperAI } from '../ai/goalkeeperAI.js';
 import { PlayerState } from '../sim/player.js';
 import { EventBus, EV } from '../core/events.js';
 import { Rng } from '../core/rng.js';
-import { MATCH, PITCH, BALL, PLAYER, AI, TEAMS, HALF_LENGTH, HALF_WIDTH, HALF_GOAL } from '../core/config.js';
+import {
+  MATCH,
+  PITCH,
+  BALL,
+  PLAYER,
+  AI,
+  TEAMS,
+  DIFFICULTY,
+  TEAMMATE_SKILL,
+  HALF_LENGTH,
+  HALF_WIDTH,
+  HALF_GOAL,
+} from '../core/config.js';
 import { clamp, dist2 } from '../core/vec.js';
 import { buildKick, laneSafety } from '../sim/kicks.js';
 
@@ -30,22 +42,27 @@ export const RestartType = {
  * The human controller is injected — the match never imports input or rendering.
  */
 export class Match {
-  constructor({ seed = 20260731, humanTeam = 0, formation = '7v7', bus = null, difficulty } = {}) {
+  constructor({ seed = 20260731, humanTeam = 0, formation = '7v7', bus = null, difficulty = 'normal' } = {}) {
     this.bus = bus || new EventBus();
     this.rng = new Rng(seed);
     this.seed = seed;
     this.humanTeam = humanTeam;
     this.world = new World({ bus: this.bus, rng: this.rng, formation });
 
-    const diff = { ...AI.difficulty, ...(difficulty || {}) };
+    // The opponent is scaled by the chosen difficulty; the player's own AI
+    // team-mates always play at full strength.
+    const skillFor = (team) => Match.skillProfile(difficulty, team, humanTeam);
+
     this.teamAI = [
-      new TeamAI({ world: this.world, teamId: 0, bus: this.bus, rng: this.rng, difficulty: diff }),
-      new TeamAI({ world: this.world, teamId: 1, bus: this.bus, rng: this.rng, difficulty: diff }),
+      new TeamAI({ world: this.world, teamId: 0, bus: this.bus, rng: this.rng, difficulty: skillFor(0) }),
+      new TeamAI({ world: this.world, teamId: 1, bus: this.bus, rng: this.rng, difficulty: skillFor(1) }),
     ];
     this.keeperAI = [
-      new GoalkeeperAI({ world: this.world, teamId: 0, bus: this.bus, rng: this.rng, difficulty: diff }),
-      new GoalkeeperAI({ world: this.world, teamId: 1, bus: this.bus, rng: this.rng, difficulty: diff }),
+      new GoalkeeperAI({ world: this.world, teamId: 0, bus: this.bus, rng: this.rng, difficulty: skillFor(0) }),
+      new GoalkeeperAI({ world: this.world, teamId: 1, bus: this.bus, rng: this.rng, difficulty: skillFor(1) }),
     ];
+
+    this.applyDifficulty(difficulty);
 
     this.humanController = null;
 
@@ -96,6 +113,41 @@ export class Match {
     });
   }
 
+  /**
+   * Resolve the skill profile for one team. The opponent is scaled by the
+   * chosen difficulty; the player's own AI team-mates always play at full
+   * strength, because being let down by your own side is not a difficulty
+   * setting, it's a bug.
+   */
+  static skillProfile(difficulty, team, humanTeam) {
+    const preset =
+      typeof difficulty === 'string'
+        ? DIFFICULTY[difficulty] || DIFFICULTY.normal
+        : { ...AI.difficulty, ...(difficulty || {}) };
+    return { ...AI.difficulty, ...(team === humanTeam ? TEAMMATE_SKILL : preset) };
+  }
+
+  /**
+   * Apply a difficulty level. Safe to call mid-session: the pace handicap lives
+   * on a separate `skill` multiplier rather than mutating role attributes, so
+   * changing level repeatedly never compounds.
+   */
+  applyDifficulty(difficulty) {
+    this.difficulty = difficulty;
+    this.difficultyName = typeof difficulty === 'string' ? difficulty : 'custom';
+
+    for (let t = 0; t < 2; t++) {
+      const profile = Match.skillProfile(difficulty, t, this.humanTeam);
+      this.teamAI[t].difficulty = { ...profile };
+      this.keeperAI[t].difficulty = { ...profile };
+      const sp = profile.speed ?? 1;
+      for (const p of this.world.teams[t]) {
+        p.skill.speed = sp;
+        p.skill.accel = sp;
+      }
+    }
+  }
+
   blankStats() {
     return { shots: 0, onTarget: 0, passes: 0, passesCompleted: 0, tackles: 0, saves: 0, corners: 0, possession: 0 };
   }
@@ -119,8 +171,9 @@ export class Match {
   // ------------------------------------------------------------- lifecycle --
 
   /** Full reset — used by "play again". Reuses the same objects, no leaks. */
-  resetMatch(seed = null) {
+  resetMatch(seed = null, difficulty = null) {
     if (seed !== null) this.seed = seed;
+    if (difficulty !== null) this.applyDifficulty(difficulty);
     this.rng.reset(this.seed);
     this.score[0] = 0;
     this.score[1] = 0;

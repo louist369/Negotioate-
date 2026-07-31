@@ -177,6 +177,17 @@ export class HUD {
         <div><b>R</b><span>Restart match</span></div>
       </div>
       <p class="note">A gamepad is used automatically if one is connected.</p>
+      <div class="difficulty">
+        <span class="dl">Difficulty</span>
+        ${['easy', 'normal', 'hard']
+          .map(
+            (d) =>
+              `<button data-difficulty="${d}" class="chip${
+                this.match.difficultyName === d ? ' on' : ''
+              }">${d}</button>`
+          )
+          .join('')}
+      </div>
       <div class="actions">
         <button data-action="resume">Resume</button>
         <button data-action="rematch" class="ghost">Restart match</button>
@@ -193,8 +204,14 @@ export class HUD {
   wirePanel() {
     for (const btn of this.el.panel.querySelectorAll('button')) {
       btn.addEventListener('click', () => {
-        const action = btn.dataset.action;
         this.bus.emit(EV.UI, { tone: 720 });
+        const level = btn.dataset.difficulty;
+        if (level) {
+          // Changing difficulty starts a fresh match at that level.
+          this.app.setDifficulty(level);
+          return;
+        }
+        const action = btn.dataset.action;
         if (action === 'resume') this.app.resume();
         else if (action === 'rematch') this.app.restart();
       });

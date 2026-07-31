@@ -234,9 +234,16 @@ export class GoalkeeperAI {
     const willSave = this.rng.chance(p) && absDz < coverable;
 
     // Dive regardless — a beaten keeper still dives, which reads correctly.
+    //
+    // Dive speed is hard-clamped to KEEPER.diveSpeed. Previously the "get there
+    // in time" term (absDz * 3.4) was unclamped, so a keeper stretching for a
+    // far corner launched itself sideways at ~17 m/s — twice a sprint, and
+    // visibly a teleport. Reaching the ball is instead handled by the bounded
+    // stretch in updateDive().
     const diveDir = Math.sign(dz) || (this.rng.chance(0.5) ? 1 : -1);
     const lateral = clamp(absDz / timeToReach, 0, KEEPER.diveSpeed);
-    const vz = diveDir * (willSave ? Math.max(lateral, absDz * 3.4) : lateral * 0.75);
+    const urgency = clamp(absDz * 3.4, 0, KEEPER.diveSpeed);
+    const vz = diveDir * (willSave ? Math.max(lateral, urgency) : lateral * 0.75);
     const vx = this.attackDir * 0.8; // small step forward into the shot
 
     gk.startDive(vx, vz, KEEPER.diveDuration, diveDir);
@@ -395,7 +402,7 @@ export class GoalkeeperAI {
 
     const aimX = target.x - ball.pos.x;
     const aimZ = target.z - ball.pos.z;
-    const { vel, spin } = buildKick(gk, ball, type, power, aimX, aimZ, target, 0, this.rng);
+    const { vel, spin } = buildKick(gk, ball, type, power, aimX, aimZ, target, 0, this.rng, this.difficulty?.errorScale ?? 1);
     gk.heading = Math.atan2(vel.x, vel.z);
     gk.triggerKickAnim(type);
     ball.pos.y = BALL.radius;

@@ -10,6 +10,7 @@ import {
   HALF_WIDTH,
   HALF_GOAL,
   BALL,
+  DIFFICULTY,
 } from '../src/core/config.js';
 
 const STEP = SIM.fixedStep;
@@ -459,5 +460,75 @@ describe('match statistics', () => {
     expect(match.stats[0].passes).toBe(0);
     expect(match.stats[1].shots).toBe(0);
     expect(match.stats[0].tackles).toBe(0);
+  });
+});
+
+describe('difficulty', () => {
+  it('scales only the opponent, never the player\'s own team-mates', () => {
+    for (const level of ['easy', 'normal', 'hard']) {
+      const match = new Match({ seed: 61, humanTeam: 0, difficulty: level });
+      // The human's side always plays at full strength.
+      expect(match.teamAI[0].difficulty.speed).toBe(1);
+      expect(match.teamAI[0].difficulty.errorScale).toBe(1);
+      for (const p of match.world.teams[0]) expect(p.skill.speed).toBe(1);
+    }
+  });
+
+  it('handicaps the opponent progressively', () => {
+    const levels = ['easy', 'normal', 'hard'].map(
+      (l) => new Match({ seed: 62, humanTeam: 0, difficulty: l }).teamAI[1].difficulty
+    );
+    const [easy, normal, hard] = levels;
+    // Easier opponents are slower, less precise and less aggressive.
+    expect(easy.speed).toBeLessThan(normal.speed);
+    expect(normal.speed).toBeLessThan(hard.speed);
+    expect(easy.errorScale).toBeGreaterThan(normal.errorScale);
+    expect(normal.errorScale).toBeGreaterThan(hard.errorScale);
+    expect(easy.tackleRate).toBeLessThan(hard.tackleRate);
+  });
+
+  it('applies the pace handicap to the opposing players', () => {
+    const match = new Match({ seed: 63, humanTeam: 0, difficulty: 'easy' });
+    for (const p of match.world.teams[1]) {
+      expect(p.skill.speed).toBeLessThan(1);
+      expect(p.skill.speed).toBeCloseTo(DIFFICULTY.easy.speed, 6);
+    }
+  });
+
+  it('can change difficulty mid-session without compounding the handicap', () => {
+    // Regression guard: the handicap lives on a separate multiplier rather than
+    // scaling role attributes, so switching levels repeatedly must be stable.
+    const match = new Match({ seed: 64, humanTeam: 0, difficulty: 'hard' });
+    const baseAttr = match.world.teams[1][3].attrs.speed;
+
+    for (let i = 0; i < 5; i++) {
+      match.applyDifficulty('easy');
+      match.applyDifficulty('hard');
+    }
+    expect(match.world.teams[1][3].attrs.speed).toBeCloseTo(baseAttr, 9);
+    expect(match.world.teams[1][3].skill.speed).toBe(1);
+
+    match.applyDifficulty('easy');
+    expect(match.world.teams[1][3].skill.speed).toBeCloseTo(DIFFICULTY.easy.speed, 6);
+    expect(match.difficultyName).toBe('easy');
+  });
+
+  it('produces a weaker opponent at easy than at hard over many matches', () => {
+    const conceded = {};
+    for (const level of ['easy', 'hard']) {
+      let goalsFor = 0;
+      let goalsAgainst = 0;
+      for (let i = 0; i < 6; i++) {
+        const match = new Match({ seed: 700 + i * 97, humanTeam: 0, difficulty: level });
+        run(match, MATCH.durationSeconds + 40, (m) => m.isOver);
+        goalsFor += match.score[0];
+        goalsAgainst += match.score[1];
+      }
+      conceded[level] = { goalsFor, goalsAgainst };
+    }
+    // A full-strength side should beat `easy` more comfortably than `hard`.
+    const easyMargin = conceded.easy.goalsFor - conceded.easy.goalsAgainst;
+    const hardMargin = conceded.hard.goalsFor - conceded.hard.goalsAgainst;
+    expect(easyMargin).toBeGreaterThan(hardMargin);
   });
 });
