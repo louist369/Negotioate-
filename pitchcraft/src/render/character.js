@@ -55,7 +55,9 @@ const DIM = {
   shin: 0.42 * S,
   footLen: 0.26 * S,
   footH: 0.08 * S,
-  torso: 0.56 * S,
+  // Raised from 0.56: the collar sat 12.3cm below the chin, a neck-to-head
+  // ratio of 0.62 where a real one is nearer 0.30.
+  torso: 0.6 * S,
   neck: 0.07 * S,
   headR: 0.115 * S,
   upperArm: 0.29 * S,
@@ -79,7 +81,7 @@ const SLOT = { shirt: 0, shorts: 1, socks: 2, skin: 3, boot: 4, hair: 5, face: 6
  * At 16 a player is ~3.2k triangles, which is squarely in the range the PS2-era
  * football games this is aiming at used.
  */
-const RADIAL = 16;
+const RADIAL = 14;
 
 // ---------------------------------------------------------------------------
 // Skeleton
@@ -235,7 +237,7 @@ function headShape(h, HEAD_H, S, F) {
     // The lathe's lowest ring is the jawline. A chin is a *front* feature, so
     // it is pulled down and forward out of that ring rather than being a ring
     // of its own — a horizontal ring can never be a chin.
-    const low = band(h, 0.19, 0.1);
+    const low = band(h, 0.1, 0.09);
     dy -= R * 0.085 * F.chin * low * lobe(a, Math.PI / 2, 0.9);
     dz += R * 0.045 * F.chin * low * lobe(a, Math.PI / 2, 0.65);
     // Mandible angle: the jaw corner, which is a real landmark and not a curve.
@@ -320,6 +322,8 @@ function addEars(m, { chinY, HEAD_H, S, widthAt }) {
         slot: SLOT.face,
         v: 0.42,
         radial: 10,
+        // A plain patch of cheek skin, behind the ear's own position.
+        uvFixed: [0.34, 0.42],
         // Lobe at the bottom, helix flaring at the top-back: an ear is not an
         // ellipse, and the asymmetry is most of what reads as one.
         shape: (a) => ({
@@ -407,7 +411,11 @@ class MeshBuilder {
       if (axis === 'y') this.pos.push(x + c * r.rx * k + dx, y + dy, z + s * r.rz * k + dz);
       else if (axis === 'x') this.pos.push(x + dx, y + c * r.rx * k + dy, z + s * r.rz * k + dz);
       else this.pos.push(x + c * r.rx * k + dx, y + s * r.rz * k + dy, z + dz);
-      this.uv.push(i / n, r.v ?? 0);
+      // `uvFixed` pins every vertex in the ring to one texel. The ears need it:
+      // u runs 0..1 across each ring, so a 3.4cm ear tab was sampling the entire
+      // head map and came out banded with the nose highlight and eye washes.
+      if (r.uvFixed) this.uv.push(r.uvFixed[0], r.uvFixed[1]);
+      else this.uv.push(i / n, r.v ?? 0);
       const ao = typeof r.ao === 'function' ? r.ao(a) : r.ao ?? 1;
       this.ao.push(ao, ao, ao);
 
@@ -686,7 +694,12 @@ function bodyGeometry(boneIndex, variant) {
   const CHIN_Y = CROWN_Y - HEAD_H;
   // The lathe's lowest ring is the jawline; the chin is sculpted down from it,
   // because a chin is a front feature and a horizontal ring cannot be one.
-  const JAW_H = 0.18;
+  // The lowest ring was at 0.18 and the chin sculpt pulled it down to only
+  // h = 0.095, so the rendered head came out 19.9cm against the 22cm these
+  // tables assume — which put the mouth at 10.5% of head height instead of
+  // 19%. Starting the stack lower, with the chin band centred on it, lands the
+  // real chin at h ~ 0.015.
+  const JAW_H = 0.1;
 
   /** Piecewise-linear profile lookup. */
   const profile = (table, h) => {
@@ -712,16 +725,18 @@ function bodyGeometry(boneIndex, variant) {
 
   // Seam at the occiput so its normal crease hides under hair.
   const SEAM = -Math.PI / 2;
-  const FACE_RADIAL = 28;
+  const FACE_RADIAL = 20;
   const headRings = [];
 
   // Neck: a column from the shoulders up into the jaw.
-  const neckR = 0.056 * S;
+  // The junction ring sits at chin height, where the neck is hidden behind the
+  // jaw, so it is narrower than a neck's true girth; the rings below it flare.
+  const neckR = 0.048 * S;
   const jawRingY = CHIN_Y + JAW_H * HEAD_H;
   for (let i = 0; i <= 3; i++) {
     const t = i / 3;
     headRings.push({
-      p: [0, lerp(DIM.hipY + DIM.torso - 0.015 * S, jawRingY, t), -0.012 * S * t],
+      p: [0, lerp(DIM.hipY + DIM.torso - 0.015 * S, jawRingY, t), -0.03 * S * t],
       rx: lerp(0.07 * S, neckR, t),
       rz: lerp(0.075 * S, neckR * 1.06, t),
       w: t < 0.4 ? [['neck', 1]] : [['neck', 1 - (t - 0.4) / 0.6], ['head', (t - 0.4) / 0.6]],
@@ -734,7 +749,7 @@ function bodyGeometry(boneIndex, variant) {
     });
   }
 
-  const HEAD_STEPS = 24;
+  const HEAD_STEPS = 18;
   for (let i = 0; i <= HEAD_STEPS; i++) {
     const k = i / HEAD_STEPS;
     const h = lerp(JAW_H, 1, k);
@@ -1134,7 +1149,10 @@ export function createPlayer(player, teamCfg, opts = {}) {
   const skeleton = buildSkeleton();
   // Face variant from the player's own id, so a given match always looks the
   // same and two players in a squad rarely collide.
-  const variant = (player.id * 7 + player.number * 3) % FACE_VARIANTS;
+  // Player ids are sequential, so taking them modulo the variant count spreads
+  // maximally: eight distinct faces across fourteen players. A hash of id and
+  // shirt number collided down to five.
+  const variant = player.id % FACE_VARIANTS;
   const geometry = bodyGeometry(skeleton.index, variant);
 
   const shirtColor = isKeeper ? colors.keeper : colors.primary;
