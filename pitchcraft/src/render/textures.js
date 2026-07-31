@@ -348,26 +348,6 @@ export function makeAdBoardTexture(renderer, text = 'PITCHCRAFT', w = 1024, h = 
   return finish(c, { repeat: [1, 1], aniso: 8, renderer });
 }
 
-/** Shirt number, applied to the back of a kit. */
-export function makeNumberTexture(number, fg = '#ffffff', bg = null, size = 128) {
-  const c = canvas(size, size);
-  const ctx = c.getContext('2d');
-  if (bg) {
-    ctx.fillStyle = bg;
-    ctx.fillRect(0, 0, size, size);
-  } else {
-    ctx.clearRect(0, 0, size, size);
-  }
-  ctx.font = `bold ${size * 0.62}px system-ui, sans-serif`;
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillStyle = fg;
-  ctx.fillText(String(number), size / 2, size * 0.54);
-  const tex = new THREE.CanvasTexture(c);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  tex.needsUpdate = true;
-  return tex;
-}
 
 /**
  * Shirt fabric. Wrapped cylindrically around the torso, so U runs around the
@@ -378,7 +358,16 @@ export function makeNumberTexture(number, fg = '#ffffff', bg = null, size = 128)
  * a knit that catches light. All four are drawn here rather than modelled, so
  * they cost one shared texture per team instead of extra geometry per player.
  */
-export function makeShirtTexture(renderer, colors, { keeper = false, size = 512 } = {}) {
+/**
+ * The expensive part of a shirt — stripes, collar, seams, weave and a
+ * full-canvas noise pass — is identical for every player in a team, so it is
+ * built once here and stamped per player by `makeShirtTexture` below.
+ *
+ * Rebuilding all of it per player pushed startup past 60 seconds on a software
+ * rasteriser: the noise overlay alone is a getImageData/putImageData round trip
+ * over 262k pixels, and it was running fourteen times.
+ */
+export function makeShirtBase(colors, { keeper = false, size = 512 } = {}) {
   const c = canvas(size, size);
   const ctx = c.getContext('2d');
   const base = keeper ? colors.keeper : colors.primary;
@@ -497,67 +486,88 @@ export function makeShirtTexture(renderer, colors, { keeper = false, size = 512 
   ctx.fillRect(0, 0, size, size);
 
   noiseOverlay(ctx, size, size, 12);
+  return { canvas: c, trim, front };
+}
+
+/**
+ * Per-player shirt: a copy of the team's base with this player's name, number
+ * and crest painted into it.
+ *
+ * Composited into the texture rather than parented to the spine as separate
+ * quads. Those quads sat 1.5-3.3cm proud of the chest surface — stickers
+ * hovering in space that did not wrap the torso and drew over the arms.
+ * Painting them here also *saves* three draw calls per player.
+ */
+export function makeShirtTexture(renderer, base, { number = null, surname = '', crest = null } = {}) {
+  const size = base.canvas.width;
+  const { trim, front } = base;
+  const c = canvas(size, size);
+  const ctx = c.getContext('2d');
+  ctx.drawImage(base.canvas, 0, 0);
+
+  const px = (u) => u * size;
+  const py = (v) => (1 - v) * size;
+
+  if (number !== null) {
+    const back = 0.75; // U of the spine
+    ctx.save();
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+
+    // Squad number, sized to a regulation ~25cm on the geometry: the torso is
+    // ~0.62m of V, so 0.32 of V is about 20cm of shirt.
+    const numTop = 0.62;
+    const numBottom = 0.3;
+    ctx.font = `bold ${size * (numTop - numBottom) * 0.95}px system-ui, sans-serif`;
+    ctx.lineWidth = size * 0.012;
+    ctx.strokeStyle = 'rgba(0,0,0,0.45)';
+    ctx.fillStyle = trim;
+    ctx.strokeText(String(number), px(back), py((numTop + numBottom) / 2));
+    ctx.fillText(String(number), px(back), py((numTop + numBottom) / 2));
+
+    // Surname, arched over the number the way a real shirt carries it.
+    const letters = String(surname || '').toUpperCase().split('');
+    if (letters.length) {
+      ctx.translate(px(back), py(numTop + 0.16));
+      ctx.font = `bold ${size * 0.042}px system-ui, sans-serif`;
+      ctx.fillStyle = trim;
+      const radius = size * 0.34;
+      const step = Math.min(0.15, (size * 0.036) / radius);
+      letters.forEach((ch, i) => {
+        const a = (i - (letters.length - 1) / 2) * step;
+        ctx.save();
+        ctx.rotate(a);
+        ctx.translate(0, -radius);
+        ctx.fillText(ch, 0, 0);
+        ctx.restore();
+      });
+    }
+    ctx.restore();
+
+    // Chest number, opposite the crest.
+    ctx.save();
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.font = `bold ${size * 0.055}px system-ui, sans-serif`;
+    ctx.fillStyle = trim;
+    ctx.fillText(String(number), px(front + 0.042), py(0.74));
+    ctx.restore();
+  }
+
+  if (crest) {
+    const w = size * 0.075;
+    ctx.drawImage(crest, px(front - 0.042) - w / 2, py(0.775) - w / 2, w, w * 1.1);
+  }
 
   return finish(c, { renderer, aniso: 8 });
 }
 
-/**
- * Shirt back: squad number with the player's surname arched above it, drawn as
- * a decal rather than baked into the shirt texture so it can be per-player
- * while the shirt itself stays per-team.
- *
- * A number alone reads as a training bib. The name above it is the single
- * cheapest thing that makes a kit look like a real football kit.
- */
-export function makeBackDecal(number, surname, fg = '#ffffff', size = 256) {
-  const c = canvas(size, size);
-  const ctx = c.getContext('2d');
-  ctx.clearRect(0, 0, size, size);
-
-  // Name, arched over the shoulders the way a real shirt carries it.
-  const letters = String(surname || '').toUpperCase().split('');
-  if (letters.length) {
-    ctx.save();
-    ctx.translate(size / 2, size * 0.86);
-    ctx.font = `bold ${size * 0.11}px system-ui, sans-serif`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillStyle = fg;
-    // Arc radius grows with the name so long names do not wrap round the ribs.
-    const radius = size * (0.55 + letters.length * 0.035);
-    const step = Math.min(0.2, (size * 0.085) / radius);
-    letters.forEach((ch, i) => {
-      const a = (i - (letters.length - 1) / 2) * step;
-      ctx.save();
-      ctx.rotate(a);
-      ctx.translate(0, -radius);
-      ctx.fillText(ch, 0, 0);
-      ctx.restore();
-    });
-    ctx.restore();
-  }
-
-  // Number.
-  ctx.font = `bold ${size * 0.52}px system-ui, sans-serif`;
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.lineWidth = size * 0.03;
-  ctx.strokeStyle = 'rgba(0,0,0,0.5)';
-  ctx.strokeText(String(number), size / 2, size * 0.42);
-  ctx.fillStyle = fg;
-  ctx.fillText(String(number), size / 2, size * 0.42);
-
-  const tex = new THREE.CanvasTexture(c);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  tex.needsUpdate = true;
-  return tex;
-}
 
 /**
  * Club crest: an original shield mark built from the team's own colours. No
  * real club's badge appears anywhere in this project.
  */
-export function makeCrestTexture(colors, initials, size = 128) {
+export function makeCrestCanvas(colors, initials, size = 128) {
   const c = canvas(size, size);
   const ctx = c.getContext('2d');
   ctx.clearRect(0, 0, size, size);
@@ -601,10 +611,9 @@ export function makeCrestTexture(colors, initials, size = 128) {
   ctx.fillStyle = colors.accent;
   ctx.fillText(initials, size / 2, y + h * 0.72);
 
-  const tex = new THREE.CanvasTexture(c);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  tex.needsUpdate = true;
-  return tex;
+  // Returns the canvas, not a texture: the shirt composites it in with
+  // drawImage rather than binding it as a second map.
+  return c;
 }
 
 /**
@@ -945,4 +954,169 @@ export function makeSkinRoughness(renderer, size = 256) {
   }
 
   return finish(c, { renderer, srgb: false, aniso: 4 });
+}
+
+/**
+ * Normal map for the face.
+ *
+ * The largest quality-per-triangle lever available here. Every surface detail
+ * a head needs — the nasolabial fold, the lid crease, the roll of a lip, the
+ * philtrum, the grain of stubble — is a *shading* feature, not a silhouette
+ * one. Modelling them costs triangles and only pays off from the angles that
+ * show the silhouette; a normal map pays off from every angle at zero triangle
+ * cost.
+ *
+ * Built by drawing a greyscale height field with the same canvas primitives the
+ * colour map uses, blurring it, and running a Sobel operator over it. Tangent
+ * space, so it must agree with the UV layout: U runs around the head with the
+ * face centre at 0.5 (the ring seam is at the occiput) and V is true height
+ * fraction, 0 at the chin.
+ */
+export function makeHeadNormal(renderer, size = 512) {
+  const c = canvas(size, size);
+  const ctx = c.getContext('2d');
+
+  const py = (v) => (1 - v) * size;
+  const px = (u) => (0.5 + u) * size;
+  const V = { chin: 0.07, mouth: 0.19, nose: 0.3, eyes: 0.5, brow: 0.565, hairline: 0.72 };
+
+  // Mid-grey is "flat"; lighter is raised.
+  ctx.fillStyle = '#808080';
+  ctx.fillRect(0, 0, size, size);
+
+  const bump = (u, v, r, amount, squashY = 1) => {
+    ctx.save();
+    ctx.translate(px(u), py(v));
+    ctx.scale(1, squashY);
+    const g = ctx.createRadialGradient(0, 0, 0, 0, 0, r);
+    const val = Math.round(128 + amount * 127);
+    g.addColorStop(0, `rgba(${val},${val},${val},1)`);
+    g.addColorStop(1, 'rgba(128,128,128,0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(-r, -r, r * 2, r * 2);
+    ctx.restore();
+  };
+
+  const ridge = (x0, y0, x1, y1, w, amount) => {
+    ctx.strokeStyle = `rgba(${Math.round(128 + amount * 127)},${Math.round(
+      128 + amount * 127
+    )},${Math.round(128 + amount * 127)},0.9)`;
+    ctx.lineWidth = w;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(x0, y0);
+    ctx.lineTo(x1, y1);
+    ctx.stroke();
+  };
+
+  // Brow ridges, raised.
+  bump(-0.06, V.brow, size * 0.05, 0.5, 0.5);
+  bump(0.06, V.brow, size * 0.05, 0.5, 0.5);
+  // Eye sockets, sunk, with the lid crease above each.
+  bump(-0.0675, V.eyes, size * 0.045, -0.45, 0.7);
+  bump(0.0675, V.eyes, size * 0.045, -0.45, 0.7);
+  for (const du of [-0.0675, 0.0675]) {
+    ridge(px(du - 0.03), py(V.eyes + 0.022), px(du + 0.03), py(V.eyes + 0.024), size * 0.01, -0.5);
+    // Eyeball itself bulges slightly inside the socket.
+    bump(du, V.eyes, size * 0.02, 0.35, 0.8);
+  }
+
+  // Nose: bridge ridge, tip, and the wings either side.
+  ridge(px(0), py(V.brow - 0.01), px(0), py(V.nose + 0.02), size * 0.026, 0.45);
+  bump(0, V.nose + 0.01, size * 0.028, 0.5);
+  bump(-0.024, V.nose - 0.012, size * 0.02, 0.35);
+  bump(0.024, V.nose - 0.012, size * 0.02, 0.35);
+  // Nostrils, sunk.
+  bump(-0.019, V.nose - 0.028, size * 0.012, -0.6);
+  bump(0.019, V.nose - 0.028, size * 0.012, -0.6);
+  // Philtrum groove.
+  ridge(px(0), py(V.nose - 0.04), px(0), py(V.mouth + 0.02), size * 0.012, -0.4);
+
+  // Nasolabial folds — the single most recognisable crease on a face.
+  for (const side of [-1, 1]) {
+    ctx.strokeStyle = 'rgba(96,96,96,0.85)';
+    ctx.lineWidth = size * 0.011;
+    ctx.beginPath();
+    ctx.moveTo(px(side * 0.028), py(V.nose - 0.03));
+    ctx.quadraticCurveTo(
+      px(side * 0.052),
+      py(V.mouth + 0.045),
+      px(side * 0.045),
+      py(V.mouth - 0.015)
+    );
+    ctx.stroke();
+  }
+
+  // Lips: upper rolls back, lower rolls out, with the mouth line sunk.
+  bump(0, V.mouth + 0.012, size * 0.03, 0.3, 0.45);
+  bump(0, V.mouth - 0.016, size * 0.032, 0.42, 0.4);
+  ridge(px(-0.04), py(V.mouth), px(0.04), py(V.mouth), size * 0.009, -0.55);
+  // Chin pad and the crease above it.
+  bump(0, V.chin + 0.04, size * 0.045, 0.3, 0.7);
+  ridge(px(-0.022), py(V.mouth - 0.045), px(0.022), py(V.mouth - 0.045), size * 0.012, -0.3);
+
+  // Cheekbones raised, hollows beneath.
+  bump(-0.088, V.eyes - 0.05, size * 0.055, 0.3, 0.8);
+  bump(0.088, V.eyes - 0.05, size * 0.055, 0.3, 0.8);
+  bump(-0.095, V.mouth + 0.05, size * 0.05, -0.25, 0.9);
+  bump(0.095, V.mouth + 0.05, size * 0.05, -0.25, 0.9);
+
+  // Ear concha, sunk, on the modelled tabs.
+  bump(-0.25, V.eyes - 0.09, size * 0.03, -0.4);
+  bump(0.25, V.eyes - 0.09, size * 0.03, -0.4);
+
+  // Temple hollows.
+  bump(-0.12, V.brow + 0.02, size * 0.04, -0.2, 0.9);
+  bump(0.12, V.brow + 0.02, size * 0.04, -0.2, 0.9);
+
+  // Forehead: a shallow central rise with the frontal eminences either side.
+  bump(0, V.brow + 0.09, size * 0.07, 0.18, 0.8);
+
+  // Stubble and pore grain — high-frequency noise is what stops skin reading
+  // as a smooth plastic shell once the light moves across it.
+  for (let i = 0; i < 14000; i++) {
+    const u = (Math.random() - 0.5) * 0.52;
+    const v = V.chin - 0.03 + Math.random() * 0.72;
+    const beard = v < V.mouth + 0.04 && Math.abs(u) < 0.16;
+    const amp = beard ? 60 + Math.random() * 60 : 112 + Math.random() * 32;
+    ctx.fillStyle = `rgba(${amp},${amp},${amp},${beard ? 0.5 : 0.28})`;
+    ctx.fillRect(px(u), py(v), size * 0.0035, size * 0.0035);
+  }
+
+  // Blur so the Sobel below sees slopes rather than steps.
+  ctx.filter = 'blur(1.6px)';
+  ctx.drawImage(c, 0, 0);
+  ctx.filter = 'none';
+
+  // --- Sobel the height field into a tangent-space normal map -------------
+  const src = ctx.getImageData(0, 0, size, size).data;
+  const out = ctx.createImageData(size, size);
+  const at = (x, y) => src[((y & (size - 1)) * size + (x & (size - 1))) * 4] / 255;
+  // 2.6 over-drove every feature into a carved-mask look. Skin detail should
+  // catch the light, not sculpt a second face on top of the modelled one.
+  const STRENGTH = 1.35;
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const dx =
+        at(x - 1, y - 1) + 2 * at(x - 1, y) + at(x - 1, y + 1) -
+        (at(x + 1, y - 1) + 2 * at(x + 1, y) + at(x + 1, y + 1));
+      const dy =
+        at(x - 1, y - 1) + 2 * at(x, y - 1) + at(x + 1, y - 1) -
+        (at(x - 1, y + 1) + 2 * at(x, y + 1) + at(x + 1, y + 1));
+      let nx = dx * STRENGTH;
+      let ny = dy * STRENGTH;
+      const nz = 1;
+      const len = Math.hypot(nx, ny, nz) || 1;
+      nx /= len;
+      ny /= len;
+      const i = (y * size + x) * 4;
+      out.data[i] = Math.round((nx * 0.5 + 0.5) * 255);
+      out.data[i + 1] = Math.round((ny * 0.5 + 0.5) * 255);
+      out.data[i + 2] = Math.round((nz / len * 0.5 + 0.5) * 255);
+      out.data[i + 3] = 255;
+    }
+  }
+  ctx.putImageData(out, 0, 0);
+
+  return finish(c, { renderer, srgb: false, aniso: 8 });
 }

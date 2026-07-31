@@ -32,7 +32,7 @@ const errors = [];
 page.on('console', (m) => m.type() === 'error' && errors.push(m.text()));
 page.on('pageerror', (e) => errors.push(String(e)));
 await page.goto(`http://localhost:${PORT}/?quality=high`, { waitUntil: 'load', timeout: 60000 });
-await page.waitForFunction(() => !!window.__pitchcraft, null, { timeout: 60000 });
+await page.waitForFunction(() => !!window.__pitchcraft, null, { timeout: 150000 });
 await sleep(3000);
 
 await page.evaluate(() => {

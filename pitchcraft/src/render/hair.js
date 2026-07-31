@@ -21,6 +21,7 @@ import * as THREE from 'three';
 function latheGeometry(rings, radial) {
   const pos = [];
   const uv = [];
+  const col = [];
   const idx = [];
 
   for (const r of rings) {
@@ -36,6 +37,11 @@ function latheGeometry(rings, radial) {
         r.p[2] + s * r.rz * k + (mod?.dz || 0)
       );
       uv.push(i / radial, r.v ?? 0);
+      // Hair shares the body's material, which reads vertex colour for baked AO;
+      // without the attribute the shader would sample garbage. Darkened toward
+      // the hairline, where hair sits against the scalp.
+      const ao = 1 - 0.25 * Math.max(0, 1 - (r.v ?? 0) * 3);
+      col.push(ao, ao, ao);
     }
   }
 
@@ -53,6 +59,7 @@ function latheGeometry(rings, radial) {
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
   g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
   g.setIndex(idx);
   g.computeVertexNormals();
   return g;
@@ -280,20 +287,24 @@ export function hairFor(player, skull) {
 function mergeSimple(list) {
   const pos = [];
   const uv = [];
+  const col = [];
   const idx = [];
   let offset = 0;
   for (const g of list) {
     const p = g.getAttribute('position');
     const t = g.getAttribute('uv');
+    const cAttr = g.getAttribute('color');
     const i = g.getIndex();
     for (let n = 0; n < p.count; n++) pos.push(p.getX(n), p.getY(n), p.getZ(n));
     for (let n = 0; n < t.count; n++) uv.push(t.getX(n), t.getY(n));
+    for (let n = 0; n < cAttr.count; n++) col.push(cAttr.getX(n), cAttr.getY(n), cAttr.getZ(n));
     for (let n = 0; n < i.count; n++) idx.push(i.getX(n) + offset);
     offset += p.count;
   }
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
   g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
   g.setIndex(idx);
   g.computeVertexNormals();
   return g;

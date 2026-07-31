@@ -2,13 +2,13 @@ import * as THREE from 'three';
 import { PLAYER } from '../core/config.js';
 import { hairFor } from './hair.js';
 import {
-  makeNumberTexture,
+  makeShirtBase,
   makeShirtTexture,
   makeFabricRoughness,
   makeHeadTexture,
   makeSkinRoughness,
-  makeBackDecal,
-  makeCrestTexture,
+  makeHeadNormal,
+  makeCrestCanvas,
 } from './textures.js';
 
 /**
@@ -354,6 +354,14 @@ class MeshBuilder {
     this.uv = [];
     this.skinIndex = [];
     this.skinWeight = [];
+    // Per-vertex ambient occlusion, written into a `color` attribute.
+    //
+    // Every crease on a clothed body — armpit, jaw underside, eye socket,
+    // sleeve hem, sock top, crotch — had exactly zero contact shading, because
+    // a directional light rig cannot produce any. Baking it per vertex costs
+    // ~38kB and no draw calls, and it is what stops the body reading as one
+    // continuous inflated surface.
+    this.ao = [];
     // One index array per material slot, so the whole body is one geometry
     // with six groups rather than six meshes.
     this.indices = Array.from({ length: 7 }, () => []);
@@ -397,6 +405,8 @@ class MeshBuilder {
       else if (axis === 'x') this.pos.push(x + dx, y + c * r.rx * k + dy, z + s * r.rz * k + dz);
       else this.pos.push(x + c * r.rx * k + dx, y + s * r.rz * k + dy, z + dz);
       this.uv.push(i / n, r.v ?? 0);
+      const ao = typeof r.ao === 'function' ? r.ao(a) : r.ao ?? 1;
+      this.ao.push(ao, ao, ao);
 
       const w = r.w;
       const i0 = this.boneIndex.get(w[0][0]);
@@ -438,6 +448,7 @@ class MeshBuilder {
     const tip = this.pos.length / 3;
     this.pos.push(point[0], point[1], point[2]);
     this.uv.push(0.5, 0.5);
+    this.ao.push(1, 1, 1);
     const i0 = this.boneIndex.get(weights[0][0]);
     const i1 = weights[1] ? this.boneIndex.get(weights[1][0]) : 0;
     this.skinIndex.push(i0, i1, 0, 0);
@@ -451,6 +462,7 @@ class MeshBuilder {
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.Float32BufferAttribute(this.pos, 3));
     g.setAttribute('uv', new THREE.Float32BufferAttribute(this.uv, 2));
+    g.setAttribute('color', new THREE.Float32BufferAttribute(this.ao, 3));
     g.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(this.skinIndex, 4));
     g.setAttribute('skinWeight', new THREE.Float32BufferAttribute(this.skinWeight, 4));
 
@@ -675,6 +687,8 @@ function bodyGeometry(boneIndex) {
       v: 0.02,
       radial: FACE_RADIAL,
       seam: SEAM,
+      // The neck is shadowed by the jaw above and the collar below.
+      ao: 1 - 0.3 * (1 - t) - 0.24 * t,
     });
   }
 
@@ -692,6 +706,12 @@ function bodyGeometry(boneIndex) {
       rx,
       rz,
       w: k < 0.1 ? [['neck', 0.35], ['head', 0.65]] : [['head', 1]],
+      // Eye sockets, under the jaw, and where the ear meets the skull.
+      ao: (a) =>
+        1 -
+        0.34 * (lobe(a, 1.2252, 0.24) + lobe(a, 1.9164, 0.24)) * band(h, 0.5, 0.05) -
+        0.28 * band(h, 0.2, 0.06) -
+        0.14 * (lobe(a, 0, 0.3) + lobe(a, Math.PI, 0.3)) * band(h, 0.43, 0.07),
       slot: SLOT.face,
       // V is the head's true height fraction, so the painted eyes land on the
       // modelled brow rather than 20% of a head above it.
@@ -749,6 +769,12 @@ function bodyGeometry(boneIndex) {
         rx: r,
         rz: r * 0.94,
         w,
+        // Armpit is the deepest crease on a clothed figure, and the sleeve
+        // hem sits in its own shadow.
+        ao: (a) =>
+          1 -
+          0.42 * band(t, 0.06, 0.16) * lobe(a, key === 'armL' ? 0 : Math.PI, 1.0) -
+          0.18 * band(t, 0.62, 0.05),
         slot: sleeve ? SLOT.shirt : SLOT.skin,
         // Sample the *body* of the shirt, not the yoke or the trim.
         //
@@ -879,6 +905,7 @@ function bodyGeometry(boneIndex) {
         // Sock over the lower 80% of the shin, bare calf above it.
         slot: t < 0.2 ? SLOT.skin : SLOT.socks,
         v: 0,
+        ao: 1 - 0.22 * band(t, 0.2, 0.06) - 0.12 * band(t, 0.02, 0.05),
         // Shinpad: a flat plate on the front of the lower shin, which is a
         // real bulge every footballer has and reads even in silhouette.
         shape: (a) => ({
@@ -946,12 +973,12 @@ const HAIR_TONES = ['#191512', '#2e2118', '#4a3220', '#6d4a26', '#a8783c', '#1b1
 /** Kit textures are per team, not per player. */
 const KIT_CACHE = new Map();
 
-/** Crests are per team; built once and shared by the whole squad. */
+/** Crests are per team; built once as a canvas and composited into each shirt. */
 const CREST_CACHE = new Map();
-function crestTexture(teamCfg) {
+function crestCanvas(teamCfg) {
   let t = CREST_CACHE.get(teamCfg.id);
   if (!t) {
-    t = makeCrestTexture(teamCfg.colors, teamCfg.short.slice(0, 2));
+    t = makeCrestCanvas(teamCfg.colors, teamCfg.short.slice(0, 2));
     CREST_CACHE.set(teamCfg.id, t);
   }
   return t;
@@ -968,14 +995,33 @@ function skinRoughness() {
   if (!SKIN_ROUGH) SKIN_ROUGH = makeSkinRoughness(null);
   return SKIN_ROUGH;
 }
+let HEAD_NORMAL = null;
+function headNormal() {
+  if (!HEAD_NORMAL) HEAD_NORMAL = makeHeadNormal(null);
+  return HEAD_NORMAL;
+}
 
-function kitTextures(teamCfg, isKeeper) {
-  const key = `${teamCfg.id}:${isKeeper ? 'gk' : 'out'}`;
+function kitTextures(teamCfg, player) {
+  // The shirt now carries the player's own name and number, so it is per
+  // player rather than per team. That is 14 extra 512^2 canvases (~14MB) and
+  // it *saves* 42 draw calls, since the three decal quads each player used to
+  // carry are gone.
+  const key = `${teamCfg.id}:${player.id}`;
   let entry = KIT_CACHE.get(key);
   if (!entry) {
     if (!KIT_CACHE.has('rough')) KIT_CACHE.set('rough', makeFabricRoughness(null));
+    // The team's base shirt is built once and shared; only the name, number
+    // and crest are stamped per player.
+    const baseKey = `base:${teamCfg.id}:${player.isKeeper ? 'gk' : 'out'}`;
+    if (!KIT_CACHE.has(baseKey)) {
+      KIT_CACHE.set(baseKey, makeShirtBase(teamCfg.colors, { keeper: player.isKeeper }));
+    }
     entry = {
-      shirt: makeShirtTexture(null, teamCfg.colors, { keeper: isKeeper }),
+      shirt: makeShirtTexture(null, KIT_CACHE.get(baseKey), {
+        number: player.number,
+        surname: player.surname,
+        crest: crestCanvas(teamCfg),
+      }),
       rough: KIT_CACHE.get('rough'),
     };
     KIT_CACHE.set(key, entry);
@@ -986,9 +1032,11 @@ function kitTextures(teamCfg, isKeeper) {
 export function disposeKitCache() {
   for (const [k, v] of KIT_CACHE) {
     if (k === 'rough') v.dispose();
+    else if (k.startsWith('base:')) continue; // plain canvases, nothing to free
     else v.shirt.dispose();
   }
   KIT_CACHE.clear();
+  CREST_CACHE.clear();
 }
 
 /**
@@ -1008,13 +1056,17 @@ export function createPlayer(player, teamCfg, opts = {}) {
   const socksColor = isKeeper ? colors.keeper : colors.socks;
   const skin = SKIN_TONES[player.skinIndex % SKIN_TONES.length];
   const hairCol = HAIR_TONES[(player.skinIndex + player.number) % HAIR_TONES.length];
-  const kit = kitTextures(teamCfg, isKeeper);
+  const kit = kitTextures(teamCfg, player);
 
   const mat = (color, rough, extra = {}) =>
     new THREE.MeshStandardMaterial({
       color: new THREE.Color(color),
       roughness: rough,
       metalness: 0.02,
+      // Baked AO rides in the geometry's `color` attribute. Every slot shares
+      // one geometry, so every material must read it or the attribute is
+      // silently ignored on that slot.
+      vertexColors: true,
       // Skinning is a vertex-shader feature; three.js enables it from the
       // geometry's skin attributes, but the material must not be shared with
       // a non-skinned mesh or the program cache will hand back the wrong one.
@@ -1036,7 +1088,12 @@ export function createPlayer(player, teamCfg, opts = {}) {
     hair: mat(hairCol, 0.88, { side: THREE.DoubleSide }),
     // The head map is white-based, so this material's colour still carries the
     // player's skin tone — one shared texture serves every skin in the squad.
-    face: mat(skin, 0.58, { map: headTexture(), roughnessMap: skinRoughness() }),
+    face: mat(skin, 0.58, {
+      map: headTexture(),
+      roughnessMap: skinRoughness(),
+      normalMap: headNormal(),
+      normalScale: new THREE.Vector2(0.7, 0.7),
+    }),
   };
 
   // Order must match SLOT.
@@ -1094,60 +1151,14 @@ export function createPlayer(player, teamCfg, opts = {}) {
   const build = vary(2, 0.08);
   skeleton.joints.spine.scale.set(build, 1, build);
 
-  // Kit decals.
-  //
-  // These are planes parented to the spine bone, so they ride the torso as it
-  // twists. They are what separate a football kit from a coloured leotard: a
-  // number alone reads as a training bib, and it is the *name* above it and the
-  // crest on the chest that make a shirt look like a shirt at any distance.
-  const decal = (tex, w, h, x, y, z, faceBack) => {
-    const mat = new THREE.MeshBasicMaterial({
-      map: tex,
-      transparent: true,
-      depthWrite: false,
-    });
-    const mesh = new THREE.Mesh(new THREE.PlaneGeometry(w, h), mat);
-    mesh.position.set(x, y, z);
-    if (faceBack) mesh.rotation.y = Math.PI;
-    mesh.renderOrder = 1;
-    skeleton.joints.spine.add(mesh);
-    return mat;
-  };
-
-  const decalFg = isKeeper ? '#f0f0f0' : colors.accent;
-  const backMat = decal(
-    makeBackDecal(player.number, player.surname, decalFg),
-    0.26 * S,
-    0.26 * S,
-    0,
-    DIM.torso * 0.56,
-    -0.128 * S,
-    true
-  );
-  const crestMat = decal(
-    crestTexture(teamCfg),
-    0.075 * S,
-    0.075 * S,
-    -0.055 * S,
-    DIM.torso * 0.66,
-    0.113 * S,
-    false
-  );
-  // Small chest number opposite the crest, as most kits carry.
-  const frontMat = decal(
-    makeNumberTexture(player.number, decalFg),
-    0.07 * S,
-    0.07 * S,
-    0.058 * S,
-    DIM.torso * 0.655,
-    0.113 * S,
-    false
-  );
+  // Kit decals are painted into the shirt texture itself (see kitTextures) —
+  // they used to be three PlaneGeometry quads parented to the spine, sitting
+  // 1.5-3.3cm proud of the chest surface and drawing over the arms.
 
   return {
     root,
     mesh,
-    materials: { ...M, back: backMat, crest: crestMat, front: frontMat },
+    materials: M,
     joints: skeleton.joints,
     dims: DIM,
   };
@@ -1157,10 +1168,7 @@ export const CHARACTER_DIMS = DIM;
 
 /** Free every per-player material. Geometry is shared and intentionally kept. */
 export function disposePlayer(built) {
-  for (const [key, m] of Object.entries(built.materials)) {
-    // Back decal and chest number are per player; the crest and kit maps are
-    // cached per team and must outlive any single player.
-    if ((key === 'back' || key === 'front') && m.map) m.map.dispose();
-    m.dispose();
-  }
+  // Kit maps are cached per player in KIT_CACHE and released by
+  // disposeKitCache(); only the materials themselves are per-instance here.
+  for (const m of Object.values(built.materials)) m.dispose();
 }
