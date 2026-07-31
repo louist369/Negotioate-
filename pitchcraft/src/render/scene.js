@@ -32,8 +32,13 @@ export class GameScene {
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.06;
-    this.renderer.shadowMap.enabled = quality !== 'low';
-    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    // Shadows stay on at every tier. They are the single largest contributor to
+    // the scene reading as lit rather than flat, and with the ambient fill cut
+    // back there is nothing else explaining where the light comes from — a
+    // shadowless `low` looks worse than the old over-lit build, not cheaper.
+    // The saving is taken in map resolution and filter cost instead.
+    this.renderer.shadowMap.enabled = true;
+    this.renderer.shadowMap.type = quality === 'low' ? THREE.BasicShadowMap : THREE.PCFSoftShadowMap;
 
     this.scene = new THREE.Scene();
     this.skyTexture = makeSkyTexture();
@@ -109,8 +114,14 @@ export class GameScene {
 
     const key = new THREE.DirectionalLight(0xfff2dc, 3.1);
     key.position.set(38, 62, 30);
-    key.castShadow = this.quality !== 'low';
-    key.shadow.mapSize.set(GRAPHICS.shadowMapSize, GRAPHICS.shadowMapSize);
+    key.castShadow = true;
+    const shadowRes =
+      this.quality === 'low'
+        ? 1024
+        : this.quality === 'medium'
+          ? GRAPHICS.shadowMapSize / 2
+          : GRAPHICS.shadowMapSize;
+    key.shadow.mapSize.set(shadowRes, shadowRes);
     key.shadow.camera.near = 20;
     key.shadow.camera.far = 190;
     const span = Math.max(PITCH.length, PITCH.width) * 0.62;

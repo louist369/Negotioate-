@@ -346,6 +346,11 @@ export class Match {
     // Celebration: players keep moving but the ball is dead.
     this.world.ball.frozen = true;
     for (const p of this.world.players) p.step(dt);
+    // Stepping players outside `world.step` skips its constraints, and a
+    // celebrating scorer runs in a straight line for three and a half seconds:
+    // the audit caught players 11m beyond the goal line, inside the stand.
+    this.world.resolvePlayerSeparation();
+    this.world.constrainPlayers();
     if (this.phaseTime >= MATCH.celebrationTime) {
       for (const p of this.world.players) {
         if (p.state === PlayerState.CELEBRATE) p.setState(PlayerState.IDLE);
