@@ -73,6 +73,9 @@ export class InputManager {
      * regardless of frame rate.
      */
     this.frameId = 0;
+    /** Axis contributed by on-screen touch controls, merged in `poll()`. */
+    this.touchAxis = { x: 0, z: 0 };
+    this.touchActive = false;
     this.enabled = true;
     this.lastDevice = 'keyboard';
 
@@ -145,6 +148,13 @@ export class InputManager {
     this.axis.x = x;
     this.axis.z = z;
 
+    // Touch stick wins when it is being held, since on a phone it is the only
+    // way the player is steering.
+    if (this.touchActive) {
+      this.axis.x = this.touchAxis.x;
+      this.axis.z = this.touchAxis.z;
+    }
+
     this.pollGamepad();
 
     const l = Math.hypot(this.axis.x, this.axis.z);
@@ -202,6 +212,29 @@ export class InputManager {
     this.pressed.clear();
     this.released.clear();
     this.frameId++;
+  }
+
+  /** Feed an axis from the on-screen stick. */
+  setTouchAxis(x, z) {
+    this.touchAxis.x = x;
+    this.touchAxis.z = z;
+    this.touchActive = Math.hypot(x, z) > 0.001;
+  }
+
+  /**
+   * Inject an action press from a non-keyboard source (on-screen buttons).
+   * Goes through the same pressed/held sets, so edge consumption and
+   * hold-to-charge behave identically to a key.
+   */
+  pressAction(action) {
+    if (!this.held.has(action)) this.pressed.add(action);
+    this.held.add(action);
+    this.lastDevice = 'touch';
+  }
+
+  releaseAction(action) {
+    if (this.held.has(action)) this.released.add(action);
+    this.held.delete(action);
   }
 
   isDown(action) {

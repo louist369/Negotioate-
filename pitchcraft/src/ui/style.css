@@ -574,3 +574,278 @@ table.stats td {
     height: 98px;
   }
 }
+
+/* ============================================================== touch ==== */
+/*
+ * On-screen controls. Sized for a thumb (44px is the accessibility floor; the
+ * primary actions are considerably larger) and inset from the physical screen
+ * edges with env(safe-area-inset-*) so nothing lands under a notch, a home
+ * indicator or a rounded corner.
+ */
+
+body.is-touch {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  overscroll-behavior: none;
+}
+
+.touch {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 20;
+}
+
+/* --- analogue stick --- */
+
+.tc-stick {
+  position: absolute;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+
+.tc-stick[hidden] {
+  display: none;
+}
+
+.tc-stick-base,
+.tc-stick-knob {
+  position: absolute;
+  left: 0;
+  top: 0;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.tc-stick-base {
+  width: 132px;
+  height: 132px;
+  background: rgba(6, 10, 18, 0.4);
+  border: 2px solid rgba(255, 255, 255, 0.22);
+  backdrop-filter: blur(2px);
+}
+
+.tc-stick-knob {
+  width: 62px;
+  height: 62px;
+  background: rgba(238, 243, 249, 0.72);
+  border: 2px solid rgba(255, 255, 255, 0.9);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+}
+
+.tc-stick.sprint .tc-stick-knob {
+  background: var(--accent);
+  border-color: #fff;
+}
+
+.tc-stick.sprint .tc-stick-base {
+  border-color: var(--accent);
+}
+
+/* --- action buttons --- */
+
+.tc-actions,
+.tc-utility {
+  position: absolute;
+  display: grid;
+  pointer-events: none;
+}
+
+.tc-actions {
+  right: calc(18px + env(safe-area-inset-right, 0px));
+  bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+  grid-template-columns: repeat(2, auto);
+  gap: 10px;
+  align-items: end;
+  justify-items: center;
+}
+
+.tc-utility {
+  right: calc(18px + env(safe-area-inset-right, 0px));
+  bottom: calc(190px + env(safe-area-inset-bottom, 0px));
+  grid-auto-flow: column;
+  gap: 10px;
+}
+
+.tc-btn {
+  pointer-events: auto;
+  appearance: none;
+  border: 2px solid rgba(255, 255, 255, 0.32);
+  border-radius: 50%;
+  background: rgba(10, 16, 26, 0.62);
+  color: var(--text);
+  font-family: inherit;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  backdrop-filter: blur(3px);
+  touch-action: none;
+  transition: transform 0.06s ease, background 0.1s ease, opacity 0.15s ease;
+}
+
+.tc-btn.tc-lg {
+  width: 86px;
+  height: 86px;
+  font-size: 13px;
+}
+
+.tc-btn.tc-md {
+  width: 66px;
+  height: 66px;
+  font-size: 10px;
+}
+
+.tc-btn.tc-sm {
+  width: 62px;
+  height: 62px;
+  font-size: 10px;
+}
+
+.tc-btn.tc-shoot {
+  background: rgba(255, 225, 77, 0.22);
+  border-color: rgba(255, 225, 77, 0.7);
+  color: var(--accent);
+}
+
+.tc-btn.on {
+  transform: scale(0.92);
+  background: rgba(255, 225, 77, 0.55);
+  color: #1a1400;
+  border-color: #fff;
+}
+
+/* Unavailable, not repurposed — a button that silently becomes a different
+   action is how you shoot when you meant to tackle. */
+.tc-btn.dim {
+  opacity: 0.3;
+}
+
+.tc-hint {
+  position: absolute;
+  left: calc(24px + env(safe-area-inset-left, 0px));
+  bottom: calc(22px + env(safe-area-inset-bottom, 0px));
+  max-width: 46vw;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--muted);
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.9);
+  transition: opacity 0.4s ease;
+}
+
+.tc-hint.gone {
+  opacity: 0;
+}
+
+/* --- HUD adjustments for a phone --- */
+
+body.is-touch .corner-tips {
+  display: none;
+}
+
+body.is-touch .scorebug {
+  top: calc(8px + env(safe-area-inset-top, 0px));
+  transform: translateX(-50%) scale(0.86);
+  transform-origin: top center;
+}
+
+body.is-touch .radar {
+  left: calc(12px + env(safe-area-inset-left, 0px));
+  top: calc(10px + env(safe-area-inset-top, 0px));
+  bottom: auto;
+}
+
+body.is-touch .radar canvas {
+  width: 116px;
+  height: 76px;
+}
+
+body.is-touch .power {
+  bottom: calc(122px + env(safe-area-inset-bottom, 0px));
+  width: 180px;
+}
+
+body.is-touch .hint {
+  bottom: calc(170px + env(safe-area-inset-bottom, 0px));
+  font-size: 12px;
+}
+
+body.is-touch .panel {
+  padding: 20px 22px 18px;
+  max-height: 88vh;
+  overflow-y: auto;
+}
+
+body.is-touch .controls-grid {
+  display: none;
+}
+
+body.is-touch .panel h1 {
+  font-size: 20px;
+  margin-bottom: 12px;
+}
+
+/* A pause button, since there is no Esc key on a phone. */
+.tc-pause {
+  position: absolute;
+  pointer-events: auto;
+  top: calc(10px + env(safe-area-inset-top, 0px));
+  right: calc(14px + env(safe-area-inset-right, 0px));
+  width: 44px;
+  height: 44px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: rgba(10, 16, 26, 0.72);
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 900;
+  appearance: none;
+  backdrop-filter: blur(3px);
+}
+
+/* --- rotate prompt --- */
+
+#rotate {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: none;
+  place-items: center;
+  text-align: center;
+  background: radial-gradient(circle at 50% 45%, #142033, #05080e 72%);
+  padding: 24px;
+}
+
+#rotate p {
+  margin: 14px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+#rotate .phone {
+  width: 54px;
+  height: 92px;
+  margin: 0 auto;
+  border: 3px solid var(--text);
+  border-radius: 10px;
+  animation: rotatehint 2s ease-in-out infinite;
+}
+
+@keyframes rotatehint {
+  0%,
+  40% {
+    transform: rotate(0deg);
+  }
+  60%,
+  100% {
+    transform: rotate(-90deg);
+  }
+}
+
+@media (orientation: portrait) {
+  body.is-touch #rotate {
+    display: grid;
+  }
+}

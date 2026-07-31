@@ -1,6 +1,7 @@
 import { Match, Phase } from './match/match.js';
 import { GameScene } from './render/scene.js';
 import { InputManager, Action } from './control/input.js';
+import { TouchControls, isTouchDevice } from './control/touch.js';
 import { PlayerController } from './control/playerController.js';
 import { AudioEngine } from './audio/audio.js';
 import { HUD } from './ui/hud.js';
@@ -43,10 +44,15 @@ class App {
     this.match.attachHumanController(this.controller);
 
     // Quality can be forced via ?quality=low|medium|high. The automated browser
-    // harness uses `low` because it runs on a software rasteriser.
+    // harness uses `low` because it runs on a software rasteriser. Phones and
+    // tablets default to `medium`: a modern phone GPU handles the geometry
+    // fine, but a full-density crowd at a 3x device pixel ratio does not.
+    this.isTouch = isTouchDevice();
     const quality = ['low', 'medium', 'high'].includes(params.get('quality'))
       ? params.get('quality')
-      : 'high';
+      : this.isTouch
+        ? 'medium'
+        : 'high';
 
     this.scene = new GameScene({
       canvas: this.canvas,
@@ -72,6 +78,22 @@ class App {
     this.running = true;
     this.showPerf = false;
     this.autoPlay = false;
+
+    if (this.isTouch) {
+      this.touch = new TouchControls({
+        root: this.hudRoot,
+        input: this.input,
+        hasBall: () => {
+          const p = this.controller.controlledPlayer;
+          return !!p && this.match.world.ball.owner === p;
+        },
+        onPause: () => {
+          if (this.match.paused) this.resume();
+          else this.pause();
+        },
+      });
+      document.body.classList.add('is-touch');
+    }
 
     this.bindGlobal();
     this.scene.cameraRig.snapTo(this.match.world.ball);
@@ -184,6 +206,7 @@ class App {
     this.scene.render();
 
     this.hud.update(dt);
+    if (this.touch) this.touch.update();
     this.audio.update(dt, this.scene.excitement);
 
     if (this.showPerf && this.perf.poll()) {

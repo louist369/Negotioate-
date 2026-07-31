@@ -18,7 +18,9 @@
     "closeup": "node tools/closeup.js",
     "hero": "node tools/hero.js",
     "interact": "node tools/interact.js",
-    "leakcheck": "node tools/leakcheck.js"
+    "leakcheck": "node tools/leakcheck.js",
+    "mobile": "node tools/mobile.js",
+    "single": "vite build && node tools/singlefile.js"
   },
   "dependencies": {
     "three": "^0.169.0"

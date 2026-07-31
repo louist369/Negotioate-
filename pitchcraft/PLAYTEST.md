@@ -8,8 +8,21 @@ actually held the controls**. This is the guide for doing that.
 
 ## 1. Get it running
 
-You need a machine with a GPU and a browser — Node 18+ and any recent Chrome,
-Edge, Firefox or Safari.
+### On a phone or tablet — nothing to install
+
+The game builds to a single self-contained HTML file with no external
+references, so it can be opened from anywhere:
+
+```bash
+npm run single      # writes dist-single/pitchcraft.html
+```
+
+Host that file, or open it directly. Touch controls appear automatically.
+**Hold the phone in landscape** — a portrait prompt will tell you if you forget.
+
+### On a computer
+
+Node 18+ and any recent Chrome, Edge, Firefox or Safari.
 
 ```bash
 git clone <this repo>
@@ -38,6 +51,18 @@ http://localhost:5173/?difficulty=easy
 ---
 
 ## 2. Controls
+
+### Touch
+
+- **Left thumb** — drag anywhere on the left half to steer. The stick appears
+  where you touch, so you never have to find it. **Push to the edge to sprint.**
+- **Right thumb** — PASS and SHOOT are the big buttons; LOB and THRU sit above.
+  **Hold SHOOT to charge it.**
+- **TACKLE** and **SWITCH** are always available; the ball actions dim when you
+  don't have the ball.
+- **II** (top right) pauses — that's also where the difficulty picker lives.
+
+### Keyboard
 
 Full table is in the README, and the pause screen (`P`) lists them in-game. The
 six that matter:

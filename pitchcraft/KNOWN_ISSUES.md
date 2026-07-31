@@ -102,9 +102,18 @@ nothing.
 Mostly Three.js. Fine for a desktop game served locally; would want code
 splitting for a bandwidth-sensitive deployment.
 
-### 15. Desktop only
-No touch controls, and the HUD hides its control hints below 720px. It will run
-on a tablet but is not playable on a phone.
+### 15. Mobile is playable but unproven on real hardware
+Touch controls exist and are verified in an emulated iPhone 13 landscape (21/21
+checks): a floating analogue stick, six action buttons, a pause button, safe-area
+insets and a rotate prompt. Quality drops to `medium` automatically.
+
+What is *not* verified: how it feels or performs on an actual iPhone. The
+emulator gives real touch events and the right viewport, but renders in software
+at a device pixel ratio of 1 — a real phone runs at 3.
+
+Known gaps: no haptics, no landscape-lock (iOS Safari cannot request it from a
+web page), and the stick is fixed at 62px radius rather than scaling to screen
+size.
 
 ---
 
