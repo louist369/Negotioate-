@@ -28,34 +28,30 @@ a measurement.
 `shadowMapSize`. A `?quality=low|medium|high` switch already exists.
 
 ### 3. No human has played it
-All verification is automated. The tuning targets responsiveness and ball feel
-via proxy metrics, but nobody has actually held the controls. Some of the feel
-tuning will certainly be wrong.
+All verification is automated. A scripted bot now drives the real control path
+end to end (`tools/botPlayer.js`), which caught several genuine control defects,
+but a bot is not a player. Nobody has actually held the controls, so some of the
+feel tuning will certainly be wrong.
 
 ---
 
 ## Moderate
 
-### 4. Pass completion sits around 49%
-Lower than real football (~80%). Carriers now hold the ball longer, which draws
-more pressure and more tackles (59 tackle attempts per match), so more passes are
-played under duress. The game is coherent and competitive, but scrappier than
-top-level football.
+### 4. Pass completion is 35% overall (51% for ground passes)
+Still below real football (~80%). Measured by first toucher across 8 matches:
+ground passes 51%, lofted 23%, through balls 9%.
 
-**Fix:** reduce `AI.tackleRate`, or raise the pass utility threshold further so
-carriers only release when the option is genuinely good.
+Through balls are the outlier, but they are deliberately left alone: cycle 14
+made the AI only play them when the receiver wins the race to the ball, which
+raised completion to 43% and **halved the goals** — they complete rarely and are
+still the main source of chances. See `CYCLES.md`.
 
-### 5. Very few throw-ins and corners
-About 1.0 throw-ins, 1.0 goal kicks and 0.9 corners per 5-minute match. This is
-*under*-representative — an artefact of aggressively containing pass targets
-inside the pitch to fix the opposite problem (24 dead balls per match). Play
-flows well but set pieces are rare, so that code path gets little exercise in
-normal play.
+**Fix:** the remaining gap is mostly pressing intensity. Lowering `AI.tackleRate`
+was measured and does *not* move completion (flat 44-46% from 2.2 down to 0.8
+attempts/sec), so the lever is elsewhere — most likely support positioning, so
+the carrier has a genuinely safe option more often.
 
-**Fix:** relax `containTarget` margins slightly, particularly for clearances,
-which realistically *should* sometimes go out.
-
-### 6. Restarts are taken automatically if the player waits
+### 5. Restarts are taken automatically if the player waits
 The human gets ~3.4s to take their own restart; after that the AI takes it. This
 guarantees the match can never stall, but a player who wants to reposition first
 will have it taken out from under them.
@@ -63,15 +59,15 @@ will have it taken out from under them.
 **Fix:** hold indefinitely for human restarts while showing a prompt, with the
 auto-take reserved for genuine inactivity.
 
-### 7. No offside
+### 6. No offside
 Deliberately omitted from this slice. The AI `runTarget` respects the last
 defender so runs still look purposeful, but nothing is penalised.
 
-### 8. Single half, no added time
+### 7. Single half, no added time
 `MATCH.halves` exists in config but only one period is implemented. No half-time,
 no stoppage time, no ends swap.
 
-### 9. Goalkeepers only dive laterally
+### 8. Goalkeepers only dive laterally
 `GoalkeeperAI` handles low and high shots and dives left/right, but there is no
 distinct "tip over the bar" behaviour, and the keeper cannot come out and smother
 at a player's feet in a genuine 1v1.
@@ -80,33 +76,33 @@ at a player's feet in a genuine 1v1.
 
 ## Minor
 
-### 10. Crowd figures are static in shape
+### 9. Crowd figures are static in shape
 The instanced crowd bobs vertically with excitement but has no arm or pose
 variation, and the front-row instances sit on top of a crowd *texture* rather
 than replacing it. It reads well at broadcast distance and poorly up close.
 
-### 11. Ball spin is Y-axis only
+### 10. Ball spin is Y-axis only
 `Ball.spin` is a scalar about the vertical axis driving a Magnus curve. There is
 no backspin/topspin, so lofted balls do not dip or hold up.
 
-### 12. No replays
+### 11. No replays
 Goals would benefit from a replay, and the deterministic seeded simulation makes
 this genuinely straightforward to add — but it is not implemented.
 
-### 13. Audio has no spatialisation
+### 12. Audio has no spatialisation
 Everything is mono through a single master bus. A kick on the far touchline
 sounds identical to one at the near post. `PannerNode` would fix this cheaply.
 
-### 14. Tackling has no fouls or cards
+### 13. Tackling has no fouls or cards
 Tackles either win the ball, or the tackler stumbles. There is no referee model,
 no free kicks and no penalties — so a mistimed challenge in the box costs
 nothing.
 
-### 15. Bundle is a single ~604 kB chunk
+### 14. Bundle is a single ~610 kB chunk
 Mostly Three.js. Fine for a desktop game served locally; would want code
 splitting for a bandwidth-sensitive deployment.
 
-### 16. Desktop only
+### 15. Desktop only
 No touch controls, and the HUD hides its control hints below 720px. It will run
 on a tablet but is not playable on a phone.
 
@@ -114,12 +110,18 @@ on a tablet but is not playable on a phone.
 
 ## Verified working
 
-For balance, these were checked and behave correctly:
+Checked and behaving correctly:
 
 - Every seeded match reaches full time; no stalls or soft locks
 - Restart, then play a second full match — no state corruption or duplicated entities
 - Same seed reproduces a match exactly
 - No console errors or warnings in the production build
-- All players and the ball stay finite and in bounds for a whole match
+- No resource growth across 20 restarts of the real build (scene objects,
+  geometries, shader programs, entities and event handlers all flat)
+- All players and the ball stay finite and in bounds for a whole match; an
+  anomaly sweep for stuck players, NaNs, overspeed and escaped balls finds none
 - Both teams always attack the correct goal
-- Never more than 4 of 6 outfield players within 7m of the ball
+- At most two players commit to the ball at once
+- Edge-triggered input fires exactly once per press at any frame rate
+- 23/23 browser interaction assertions pass (camera, audio, pause, difficulty,
+  human set piece, play again)

@@ -5,24 +5,35 @@ balance measurement over many headless matches, and driving the real build in a
 browser.
 
 ```bash
-npm test                    # 71 automated tests
-node tools/headlessMatch.js 10   # balance over 10 full AI-vs-AI matches
-node tools/diagnose.js 6         # attribute every dead ball to its cause
-node tools/capture.js            # drive the built game in Chromium, screenshot
-node tools/closeup.js            # fixed-camera inspection shots
+npm test                          # 86 automated tests
+node tools/headlessMatch.js 12    # symmetric balance over 12 AI-vs-AI matches
+node tools/diagnose.js 8          # attribute every dead ball to its cause
+node tools/audit.js 5             # anomaly sweep: stuck players, NaNs, overspeed
+node tools/audit.js 5 --bot       # same, driving the real human control path
+node tools/capture.js             # drive the built game in Chromium + screenshots
+node tools/interact.js            # 23 browser interaction assertions
+node tools/leakcheck.js 15        # restart the build repeatedly, watch for growth
+node tools/closeup.js             # fixed-camera inspection shots
+node tools/hero.js                # one frame with shadow mapping enabled
 ```
+
+`CYCLES.md` records the twenty review cycles these harnesses were built for,
+including what each one found.
 
 ---
 
-## 1. Automated tests — 71 passing
+## 1. Automated tests — 86 passing
 
 ```
 Test Files  3 passed (3)
-     Tests  71 passed (71)
-  Duration  ~11s
+     Tests  86 passed (86)
+  Duration  ~39s
 ```
 
-### `tests/rules.test.js` (25) — laws of the game
+Run three times consecutively to check for flakiness in the statistical
+assertions: stable at 86/86 every time.
+
+### `tests/rules.test.js` (34) — laws, clock, statistics, difficulty
 
 | Requirement | Covered by |
 |---|---|
@@ -42,6 +53,9 @@ Test Files  3 passed (3)
 | AI valid positions | all players finite and on the world for a whole match |
 | No overlapping players | no two players closer than 0.2m at any sample |
 | Determinism | same seed → identical match; different seeds → different match |
+| Match statistics | shots, tackles and passes counted for both teams, not just the human; reset on a new match |
+| Difficulty | scales the opponent only; progressive handicap; stable across repeated switches; measurably weaker opponent at `easy` |
+| Event bus | no event log accumulates during play; recording is opt-in and bounded |
 
 ### `tests/physics.test.js` (26) — ball behaviour
 
@@ -64,7 +78,7 @@ Test Files  3 passed (3)
 | Pass containment | targets clamped inside the field of play |
 | Kick types | lofted kick has real vertical velocity; ground pass has none |
 
-### `tests/control.test.js` (20) — controls and AI
+### `tests/control.test.js` (26) — controls, animation and AI
 
 | Requirement | Covered by |
 |---|---|
@@ -80,75 +94,115 @@ Test Files  3 passed (3)
 | Tackling | tackle state entered when pressing near the ball |
 | Skill move | ball knocked off the foot, still physical |
 | Correct goals | every AI shot in a full match aims at that team's target goal |
-| No swarming | never more than 4 of 6 outfield players within 7m of the ball |
+| No swarming | at most two players assigned a ball-seeking job; shape not collapsed |
 | Defensive shape | defending side keeps cover goal-side of the ball in >90% of samples |
 | Valid positions after restart | all players on the pitch after a reset |
 | Match produces football | 3 full AI matches: shots taken, goals scored, all reach full time |
+| Stride length | metres-per-step stays in a human band at every pace |
+| Stride scaling | step length grows with speed; cadence 1.2-4.5 steps/s |
+| Idle animation | a stationary player's cycle keeps advancing |
+| Frame-rate independence | one keypress = one switch, and one tackle, at 1/2/4/8 sub-steps per frame |
 
 ---
 
-## 2. Balance — 10 full AI-vs-AI matches
+## 2. Balance — 12 full AI-vs-AI matches
 
-`node tools/headlessMatch.js 10`
+`node tools/headlessMatch.js 12`
+
+Both sides pinned to the same tier. (A match created with a `humanTeam` gives
+that side full-strength team-mates while the opponent is scaled by difficulty,
+so an unpinned "balance" run would be comparing unequal teams.)
 
 ```
-goals/match       2.90
-shots/match      11.40
-saves/match       2.70
-corners/match     0.90
-throw-ins/match   1.00
-goal kicks/match  1.00
-tackles won/match 25.80
-passes/match     153.30
+goals/match       2.33
+shots/match       8.75
+saves/match       2.08
+corners/match     0.67
+throw-ins/match   2.83
+goal kicks/match  1.83
+tackles won/match 20.17
+passes/match    118.83
 all finished      true
-sim speed         260x realtime
+sim speed         205x realtime
 ```
 
-Every match reached full time. Shot conversion is ~25%, and roughly 2.7 saves
-plus 0.5 woodwork strikes per match — the keeper is a real obstacle rather than
-a formality.
+Every match reached full time. Set-piece frequencies are close to real football
+per five minutes (corners ~0.55, throw-ins ~2.2, goal kicks ~0.85).
 
-### Ball-state distribution
+### Anomaly sweep
 
-`in open play` measured across 4 full matches:
+`node tools/audit.js 5` scans every match for stuck players, non-finite
+positions, impossible velocities, players leaving the world, a ball nobody
+collects, and frozen animation state.
 
-| State | Share |
+```
+anomalies            none
+close control        43.5% of open play
+dead-ball share      14.8%
+worst ball-idle      0.1s
+max player speed     9.3 m/s   (sprint ceiling 8.45)
+max ball speed      31.6 m/s
+```
+
+### Difficulty curve
+
+A full-strength side against each tier, 20 matches each:
+
+| Opponent | Record | Score |
+|---|---|---|
+| easy | W20 D0 L0 | 3.15 – 0.20 |
+| normal | W14 D3 L3 | 2.35 – 0.70 |
+| hard | W9 D3 L8 | 1.25 – 1.30 |
+
+And the scripted bot driving the real human control path, 10 matches each:
+
+| Tier | Record | Score |
+|---|---|---|
+| easy | W6 D2 L2 | 1.00 – 0.40 |
+| normal | W1 D3 L6 | 0.70 – 1.50 |
+| hard | W0 D0 L10 | 0.30 – 2.40 |
+
+### Passing
+
+Measured by *first toucher* — who actually got to the ball first — rather than
+by the next possession event, which can be the passer regaining it.
+
+| Pass type | Reaches a team-mate |
 |---|---|
-| Under close control | **43.3%** |
-| Loose or pass in flight | 42.6% |
-| Dead ball / restart / celebration | 14.1% |
+| Ground pass | 51% |
+| Lofted | 23% |
+| Through ball | 9% |
+| All types | 35% |
 
-### Tempo
+### Resource stability
 
-| Metric | Value |
-|---|---|
-| Passes per minute (both teams) | 29.5 |
-| Average time in close control per possession | 0.59s |
-| Pass mix | 90 ground / 47 through / 15 lofted / 1.5 clearances |
-| Restarts taken per match | 8.8 |
-
-### Dead-ball causes
-
-`node tools/diagnose.js 6` attributes every dead ball to the action that caused
-it. Total is now ~2.3 per match, down from 24 before the pass and touch fixes:
+`node tools/leakcheck.js 15` restarts the real build in Chromium fifteen times
+and compares before/after.
 
 ```
-0.33  goalKick <- loft
-0.33  throwIn  <- pass
-0.17  corner   <- clear
-0.17  goalKick <- through
-0.17  throwIn  <- loft
-0.17  throwIn  <- shot
+scene objects   0 growth
+geometries      0 growth
+shader programs 0 growth
+player entities 0 growth
+event handlers  0 growth
+textures       +1  (one lazy allocation; constant at both 10 and 20 restarts)
+event queue     0
 ```
 
-### Shot outcomes per match
+### Browser interaction
 
-```
-3.17  goal
-1.33  parried
-1.00  caught
-0.50  post / crossbar
-```
+`node tools/interact.js` — **23/23 assertions pass, 0 console errors**. Covers
+camera mode switching and camera sanity over a match, the WebAudio graph and
+every synthesised voice, pause/resume and clock freeze, the difficulty picker
+(including that the player's own team-mates are never handicapped), the human
+taking their own throw-in, and play-again resetting cleanly.
+
+### Renderer cost
+
+| Quality | Draw calls | Triangles |
+|---|---|---|
+| `low` (harness default) | 237 | ~34k |
+| `medium` / `high` | ~350 | ~180k (crowd instances) |
 
 ---
 

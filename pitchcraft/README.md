@@ -35,6 +35,11 @@ npm run preview      # serves the built game on http://localhost:4173
 Add `?quality=low`, `?quality=medium` or `?quality=high` to the URL to change
 crowd density, shadows and pixel ratio. High is the default.
 
+Difficulty is `easy`, `normal` (default) or `hard` — pick it from the pause
+screen, or with `?difficulty=easy`. It scales the **opponent** only: pace,
+execution precision, pressing, willingness to shoot and keeper quality. Your own
+AI team-mates always play at full strength.
+
 ---
 
 ## Controls
@@ -110,17 +115,27 @@ movement speed, and a synthesised audio layer that responds to match events.
 ## Development
 
 ```bash
-npm test                        # 71 automated tests
-node tools/headlessMatch.js 10  # balance over 10 full AI-vs-AI matches
-node tools/diagnose.js 6        # attribute every dead ball to its cause
-node tools/capture.js           # drive the built game in Chromium + screenshot
-node tools/closeup.js           # fixed-camera inspection shots
+npm test                          # 86 automated tests
+node tools/headlessMatch.js 12    # symmetric balance over 12 AI-vs-AI matches
+node tools/diagnose.js 8          # attribute every dead ball to its cause
+node tools/audit.js 5             # anomaly sweep: stuck players, NaNs, overspeed
+node tools/audit.js 5 --bot       # same, driving the real human control path
+node tools/capture.js             # drive the built game in Chromium + screenshots
+node tools/interact.js            # 23 browser interaction assertions
+node tools/leakcheck.js 15        # restart the build repeatedly, watch for growth
+node tools/closeup.js             # fixed-camera inspection shots
+node tools/hero.js                # one frame with shadow mapping enabled
 ```
 
 The simulation has **no dependency on Three.js or the DOM**, so a complete match
-runs headless in Node at ~260x realtime. That is what made it possible to measure
+runs headless in Node at ~200x realtime. That is what made it possible to measure
 balance across many matches instead of guessing — every significant gameplay bug
 in this project was found by instrumentation rather than by eye.
+
+[`CYCLES.md`](CYCLES.md) records twenty review-and-improvement cycles. Twelve
+found a real defect; three corrected claims in this project's own documentation;
+and one improved its target metric so much that it halved the goals and had to be
+reverted.
 
 ### Project layout
 
@@ -147,6 +162,7 @@ derives from it.
 
 - [`PLAN.md`](PLAN.md) — architecture, scope, risk register
 - [`DESIGN_DECISIONS.md`](DESIGN_DECISIONS.md) — decisions and the measurements behind them
+- [`CYCLES.md`](CYCLES.md) — the 20 review cycles, what each found, and one fix that was rejected
 - [`TESTS.md`](TESTS.md) — test coverage and measured results
 - [`TASKS.md`](TASKS.md) — status and the five highest-value next improvements
 - [`KNOWN_ISSUES.md`](KNOWN_ISSUES.md) — limitations, stated honestly
@@ -165,9 +181,10 @@ most:
    so the only frame rates ever measured came from a software rasteriser and are
    meaningless. Per-frame workload (~350 draw calls, ~180k triangles) is modest,
    but that is an argument, not a measurement.
-3. **No human has play-tested it.** All tuning was validated through proxy
-   metrics — close-control share, pass tempo, acceleration curves — not by
-   someone holding the controls.
+3. **No human has play-tested it.** A scripted bot drives the real control path
+   end to end and caught several genuine defects, but it is not a player. All
+   feel tuning was validated through proxy metrics, not by someone holding the
+   controls.
 
 Also absent by design: offside, fouls and cards, half-time, and mobile support.
 

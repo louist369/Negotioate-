@@ -74,14 +74,27 @@ Status of the vertical slice.
 - [x] Broadcast HUD: score bug, clock, phase pill, radar, power meter, banners
 - [x] Pause screen with full controls, full-time summary with statistics
 - [x] Quality tiers (`?quality=low|medium|high`)
+- [x] Difficulty tiers (`?difficulty=easy|normal|hard`, and a pause-menu picker)
 
 ### Verification
-- [x] 71 automated tests across rules, physics, control and AI
-- [x] Balance measured over 10 full headless matches
+- [x] 86 automated tests across rules, physics, control, animation and AI
+- [x] Symmetric balance measured over 12 full headless matches
 - [x] Dead-ball cause attribution harness
 - [x] Browser harness driving the production build, 0 console errors
-- [x] All 12 required evidence screenshots captured
-- [x] Documentation: PLAN, TASKS, TESTS, KNOWN_ISSUES, DESIGN_DECISIONS, README
+- [x] All required evidence screenshots captured
+- [x] Documentation: PLAN, TASKS, TESTS, KNOWN_ISSUES, DESIGN_DECISIONS, CYCLES, README
+
+---
+
+### Review cycles (see CYCLES.md)
+- [x] 20 review cycles, 12 of which found a real defect
+- [x] Scripted human-input driver exercising the real control path
+- [x] Anomaly auditor (stuck players, NaNs, overspeed, escaped balls)
+- [x] Resource-leak audit across repeated restarts of the real build
+- [x] 23-assertion browser interaction audit
+- [x] Difficulty tiers, applied to the opponent only, switchable at runtime
+- [x] Corner set-piece positioning
+- [x] Frame-rate-independent edge-triggered input
 
 ---
 
@@ -95,24 +108,26 @@ Limbs currently do not deform. The animation layer already drives named joints,
 so the runtime work is small — the cost is authoring a skinned humanoid.
 
 ### 2. Play-test with a human and re-tune the feel
-Every gameplay decision here was validated by proxy metrics. Acceleration,
-turn rate, touch distance, assist strength and switching all need a person's
-hands on them before they can be called good.
+A scripted bot now drives the real control path end to end and caught several
+genuine defects, but it is not a player. Acceleration, turn rate, touch distance,
+assist strength and switching all need a person's hands on them.
 
 ### 3. Profile on real hardware and lock in 60 fps
-Draw calls and triangles are modest but unmeasured on a GPU. Profile, then set
-sensible defaults for `crowdDensity` and `shadowMapSize` per quality tier, and
-auto-select the tier from measured frame time.
+Draw calls (237 at the low tier) and triangles are modest but unmeasured on a
+GPU. Profile, then set sensible defaults for `crowdDensity` and `shadowMapSize`
+per tier, and auto-select the tier from measured frame time.
 
 ### 4. Fouls, free kicks and penalties
 Tackling currently has no downside beyond stumbling. A referee model would add
 real tactical weight to defending, make the penalty area meaningful, and reuse
 the restart machinery that already exists.
 
-### 5. Goal replays
-The simulation is deterministic and seeded, so recording and replaying the last
-few seconds from a different camera is mostly a presentation task. It is the
-single biggest "feels like a real broadcast" win available for the effort.
+### 5. Raise pass completion through support play, not pressing
+Ground passes complete 51%, still short of real football. Cycle 13 showed the
+lever is not tackle frequency — sweeping it from 2.2 down to 0.8 attempts/sec
+left completion flat at 44-46%. The likely lever is support positioning, so the
+carrier more often has a genuinely safe option. Cycle 14 is a warning here:
+optimising completion directly halved the goals.
 
 ---
 
