@@ -261,3 +261,173 @@ screenshot and most were invisible in aggregate match statistics too — they we
 found by measuring a specific mechanism and comparing it against what it should
 be. Three of the cycles corrected claims in this project's own documentation, and
 one rejected a fix that improved its target metric while making the game worse.
+
+---
+
+# Round two: ten cycles on physics and graphics
+
+The first twenty cycles were run before anyone had played the game. Once
+someone did, the verdict was two words long: *"the physics still feel childlike
+and the graphics are obviously weak."* Both turned out to be correct, and both
+turned out to have a single measurable cause rather than a long tail of small
+ones.
+
+## 21. Locomotion was not human
+
+Compared every number in `PLAYER` against published athletic data instead of
+against how it felt:
+
+| | was | human | |
+|---|---|---|---|
+| acceleration | 26 m/s² | 6–8 | far too high |
+| time to top speed | 0.32 s | 1.6–2.2 s | far too fast |
+| deceleration | 34 m/s² | 6–9 | far too high |
+| standing turn rate | 774 deg/s | 360–540 | too high |
+| sprint top speed | 8.45 m/s | 9.5–10.5 | too low |
+
+**Found:** a player reached full sprint in a third of a second and stopped dead
+in a tenth. Nothing on the pitch had mass. This is the whole of "childlike" —
+it is not an animation problem, it is that the character had no inertia.
+
+**Fixed:** acceleration 8.6, deceleration 10.5, standing turn 8.7 rad/s
+(≈500 deg/s) falling to 2.6 at a sprint, top sprint 9.7 m/s. Slightly at the
+brisk end of the real band, because this is a game.
+
+## 22. The pitch was a junior pitch
+
+**Found:** 78 × 50 m with 6.8 × 2.3 m goals. A 1.82 m player stood 3.74 goal
+widths tall against a real 4.02, and the six-yard box was 13 m wide — narrower
+than `goalWidth + 2 × goalAreaDepth`, which is geometrically impossible on a
+real pitch. Undersized goals are the fastest way for a scene to read as a
+schools match no matter how it is lit.
+
+**Fixed:** regulation 7.32 × 2.44 m goals, pitch to 88 × 57, and every marking
+re-derived from the goal rather than from the pitch.
+
+## 23. Every AI range constant was still calibrated for the old pitch
+
+**Found:** goals dropped from 2.33 to 1.40 per match on the larger pitch. Press
+radius, support radius, marking radius, spacing, pass range, through-ball lead
+and shooting range had all been tuned against 78 × 50, so enlarging the pitch
+made the game passive rather than expansive.
+
+**Fixed:** all scaled with the pitch. Goals recovered to 2.40.
+
+## 24. Conversion ran at 43%, then 50%
+
+**Found:** a regulation goal is 7.7% wider and 6% taller than the one the
+goalkeeper was tuned against, so the same keeper conceded far more. Shot
+conversion hit 50% — one in two shots a goal.
+
+**Fixed:** swept `KEEPER.baseSave` over 30-match samples at each value rather
+than guessing:
+
+| baseSave | goals | shots | conversion | saves |
+|---|---|---|---|---|
+| 1.02 | 2.03 | 6.23 | 33% | 2.33 |
+| 1.08 | 1.93 | 6.50 | 30% | 2.40 |
+| **1.14** | **1.77** | **6.30** | **28%** | **2.63** |
+| 1.20 | 1.73 | 6.43 | 27% | 2.93 |
+
+Took 1.14, plus the dive span and speed the wider goal geometrically requires.
+
+## 25. Slower players could no longer win a loose ball
+
+The defensive-shape test started failing on its *sample count* — it collects
+samples only while someone is in possession, and it could no longer find
+enough. That is the test doing its job.
+
+**Found:** the ball was owned by a player for only 31.8% of live play, against
+44.1% before the locomotion change. Attributed directly by re-running with the
+old acceleration:
+
+| | owned while live |
+|---|---|
+| current | 31.8% |
+| old locomotion | 44.1% |
+| + `minReachFraction` 0.75 | 36.9% |
+| + `reachRadius` 1.7 | 41.7% |
+
+**Fixed:** not by giving the acceleration back — that is the defect — but by
+widening the control envelope, which is what a real footballer has. A standing
+leg extension from the body centre is about 1.7 m, and the old 1.5 m with a
+0.5 minimum reach fraction was simply ungenerous. Possession returned to 43.0%
+with human acceleration intact.
+
+## 26. Shadows were rendering correctly and were invisible
+
+**Found:** probing the live scene showed 245 shadow casters, a 2048² shadow
+map, and a turf that received. The shadows were there. They could not be seen
+because the light rig was hemisphere 0.55 + fill 0.62 + rim 0.4 + ambient 0.7
+under a key of 2.15 — removing the key still left roughly half the scene's
+light, so a shadowed pixel was barely darker than a lit one.
+
+This is the whole of "the graphics are weak." It was never a lack of
+brightness; it was that there was no *contrast*, so nothing had form.
+
+**Fixed:** ambient light removed entirely, hemisphere to 0.16, fill to 0.34,
+key to 3.1 — which is only possible because of cycle 27.
+
+## 27. Indirect light was a constant
+
+**Found:** every material in the scene is a `MeshStandardMaterial` with no
+environment map, so its indirect term was a flat constant and its specular
+response collapsed to one highlight per light. That is what makes an untextured
+Three.js scene look like plastic, and it cannot be fixed by adding lights.
+
+**Fixed:** `src/render/environment.js` paints a procedural stadium surround —
+sky above, floodlight banks at roof height, dark stands at the horizon, green
+turf bounce below — and hands it to `PMREMGenerator`. Kits, boots, the ball and
+the goal frames now sit in the light a real pitch sits in.
+
+## 28. The turf was one flat polygon
+
+**Found:** 60% of every frame was a single plane with a tiling blade texture
+too fine to survive minification, plus mown stripes drawn as unlit white
+overlay quads. Real mow stripes are the same grass leaning toward or away from
+you: the light band is both brighter *and* glossier. A flat white overlay gets
+the tint and misses the specular difference entirely, so they read as paint.
+
+**Fixed:** a second, pitch-sized macro map injected into the compiled shader
+alongside the tiling detail map. It carries stripes as both a tint and a
+roughness shift, floodlight pooling, corner falloff, and wear at the goalmouths,
+penalty spots and centre circle.
+
+## 29. The crowd was television static
+
+**Found:** the crowd palette was fully-saturated primaries at equal weight, so
+at 40 m every spectator was as loud as every other and the eye found no
+structure. A real crowd under floodlight is dark and desaturated.
+
+**Fixed:** weighted palette — 62% muted, 28% team colours, 10% bright — plus
+vertical aisles, per-row shading, clustered empty seats, shoulders on the
+figures, and a scatter of phone screens that the new bloom pass catches. The
+instanced front-row figures were re-palletted to match, since they sit directly
+against the texture behind them.
+
+## 30. Post-processing, and what it revealed
+
+Added `src/render/post.js`: bloom, then a lift/gamma/gain grade with a vignette
+and edge chromatic aberration, then tone mapping at the end of the chain so
+bloom operates in linear space.
+
+**Found immediately:** at a bloom threshold of 0.85 the painted pitch markings —
+near-white at 0.94 opacity — crossed it and glowed like neon tubing. Raised to
+1.02 so only the floodlight heads lift. The goal netting then read as a grey
+smudge against the crowd, and was given the emissive a floodlit nylon net
+actually has.
+
+---
+
+## What round two was worth
+
+Two complaints, ten cycles, and in both cases the cause was a single number
+rather than a missing feature. "Childlike" was an acceleration of 26 m/s².
+"Weak" was an ambient light of 0.7. Neither was visible in a screenshot, an
+aggregate match statistic, or the test suite — the first was found by comparing
+the config against published human data, the second by probing the live scene
+and discovering that the shadows had been rendering correctly all along.
+
+The most useful single tool built this round was `tools/sweep.js`, after two
+successive balance decisions were made on 14-match samples whose noise was
+larger than the effect being measured.

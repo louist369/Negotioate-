@@ -132,7 +132,19 @@ function buildStands(renderer, outerX, outerZ) {
     tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
     tex.repeat.set(repeats, 2.1);
     tex.needsUpdate = true;
-    const deckMat = new THREE.MeshStandardMaterial({ map: tex, roughness: 1, side: THREE.DoubleSide });
+    // A crowd deck sits under the roof, facing away from the key light, so lit
+    // purely by direct light it would go black. Real stands are visible because
+    // floodlight spills into them — modelled here as a low emissive of the
+    // crowd texture itself, which keeps the stand readable without flattening
+    // it into a self-lit billboard.
+    const deckMat = new THREE.MeshStandardMaterial({
+      map: tex,
+      emissiveMap: tex,
+      emissive: 0xffffff,
+      emissiveIntensity: 0.5,
+      roughness: 1,
+      side: THREE.DoubleSide,
+    });
 
     // Raked deck. A plane's normal is +Z; rotating by (-pi/2 - slope) about X
     // sends it to (0, cos s, -sin s) — up and tilted back toward the pitch,
@@ -211,15 +223,21 @@ function buildInstancedCrowd(rows, density = GRAPHICS.crowdDensity) {
   mesh.receiveShadow = false;
   mesh.frustumCulled = false;
 
+  // Weighted to match makeCrowdTexture: mostly muted, team colours in the
+  // minority, brights rare. The front-row figures sit directly against the
+  // texture behind them, so a palette mismatch here would show as a bright band
+  // of confetti in front of a dark stand.
   const palette = [
-    new THREE.Color('#e6e6e6'),
-    new THREE.Color('#2b4a8c'),
-    new THREE.Color('#b7362a'),
-    new THREE.Color('#e8c65a'),
-    new THREE.Color('#3d3d45'),
-    new THREE.Color('#6f4f8f'),
-    new THREE.Color('#2f7f6a'),
-    new THREE.Color('#c96a2b'),
+    new THREE.Color('#3a3c42'),
+    new THREE.Color('#2d3138'),
+    new THREE.Color('#4a4136'),
+    new THREE.Color('#53535a'),
+    new THREE.Color('#38414d'),
+    new THREE.Color('#463b3b'),
+    new THREE.Color('#28407a'),
+    new THREE.Color('#8c3327'),
+    new THREE.Color('#c9c9c4'),
+    new THREE.Color('#c8a63f'),
   ];
 
   const dummy = new THREE.Object3D();

@@ -241,3 +241,67 @@ Audio in particular is fully synthesised: the whistle is two detuned square
 oscillators through a vibrato LFO, post strikes are inharmonic partials, and the
 crowd is filtered noise whose gain and brightness are driven by a live
 "excitement" value that match events push around.
+
+## 18. Indirect light comes from an environment map, not from ambient
+
+Every material in the scene is a `MeshStandardMaterial`. Without an environment
+map, such a material's indirect term is a flat constant and its specular
+response collapses to a single highlight per light — which is what makes an
+untextured Three.js scene look like moulded plastic regardless of how many
+lights are added.
+
+The original rig compensated the only way a constant-ambient scene can: by
+adding more of it. Hemisphere 0.55, fill 0.62, rim 0.4 and ambient 0.7, under a
+key of 2.15. That produced a bright image with no form, and — measurably —
+invisible shadows: removing the key still left roughly half the scene's light,
+so a shadowed pixel was barely darker than a lit one. The shadow maps had been
+rendering correctly the entire time.
+
+`src/render/environment.js` paints a procedural stadium surround into an
+equirectangular canvas and runs it through `PMREMGenerator`. With real indirect
+light available, the constant fills come down to hemisphere 0.16 and fill 0.34,
+ambient goes away entirely, and the key rises to 3.1. Shadows appear, and every
+curved surface on a player gets a gradient across it instead of a flat wash.
+
+Trade-off: one extra render target and a PMREM pass at startup. It is generated,
+not loaded, so it costs nothing in the bundle.
+
+## 19. Locomotion is set from athletic data, not from feel
+
+`PLAYER.accel`, `decel` and the turn rates are taken from published human sprint
+data rather than picked for responsiveness: 8.6 m/s² acceleration, ~1.6s to top
+speed, ~500 deg/s standing turn falling to ~150 deg/s at a sprint.
+
+The previous values were chosen to feel responsive and did — 26 m/s² put a
+player at full sprint in 0.32 seconds. The result read as weightless, and the
+one-line play-test verdict was "childlike." Nothing on the pitch had mass.
+
+The cost is real and was measured: with human acceleration, players could no
+longer reach loose balls, and possession fell from 44.1% of live play to 31.8%.
+The fix was deliberately *not* to restore the acceleration, because the
+acceleration is the thing that was wrong. It was to widen the control envelope
+to match — a standing leg extension from the body centre is about 1.7 m, and the
+old 1.5 m reach with a 0.5 minimum reach fraction was simply ungenerous about
+what an arriving player can do. Possession returned to 43.0%.
+
+The general form of this decision: when a physical constant is wrong, correct
+the constant and pay for it elsewhere, rather than keeping the wrong constant
+because the system was balanced around it.
+
+## 20. Balance decisions are swept, not guessed
+
+Two successive balance changes in round two were made on 14-match samples and
+both produced non-monotone difficulty curves — the noise was larger than the
+effect. At roughly 2.5 goals a match, a 30-match sample has a standard error on
+goal margin of about 0.35, which is the same size as the entire easy-to-hard
+difference the tiers are supposed to produce.
+
+`tools/sweep.js` runs a parameter across a large fixed sample and prints the
+resulting balance, and `tools/diffcheck.js` does the same for the difficulty
+tiers. Nothing in `KEEPER` or `DIFFICULTY` is now changed without one of them.
+
+The knock-on for the test suite: the difficulty test can no longer assert on
+goal margin over six matches, because that measurement cannot distinguish the
+tiers even when they are working. It asserts on opponent shot volume instead,
+which is what the tiers directly control and which separates cleanly at a
+sample size the suite can afford.

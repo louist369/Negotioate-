@@ -5,6 +5,8 @@ import { createPlayer } from './character.js';
 import { animatePlayer, createAnimState } from './animation.js';
 import { BroadcastCamera } from './camera.js';
 import { Effects, createBall, ContactShadows } from './effects.js';
+import { applyEnvironment, makeSkyTexture } from './environment.js';
+import { PostPipeline } from './post.js';
 import { TEAMS, GRAPHICS, PITCH, BALL, HALF_LENGTH } from '../core/config.js';
 import { EV } from '../core/events.js';
 import { clamp } from '../core/vec.js';
@@ -34,12 +36,22 @@ export class GameScene {
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color('#070b14');
-    this.scene.fog = new THREE.Fog('#0a1020', 90, 260);
+    this.skyTexture = makeSkyTexture();
+    this.scene.background = this.skyTexture;
+    this.scene.backgroundIntensity = 0.9;
+    // Fog is tinted to the horizon haze so the far stand dissolves into the sky
+    // rather than ending on a hard silhouette edge against it.
+    this.scene.fog = new THREE.Fog('#1a2438', 110, 300);
 
     this.cameraRig = new BroadcastCamera(this.aspect);
 
     this.buildLighting();
+    // Indirect light comes from a procedural stadium environment rather than a
+    // flat ambient constant — see environment.js for why that matters more than
+    // any amount of extra direct light.
+    this.disposeEnvironment = applyEnvironment(this.scene, this.renderer, {
+      intensity: quality === 'low' ? 0.75 : 0.55,
+    });
 
     this.pitch = buildPitch(this.renderer);
     this.scene.add(this.pitch);
@@ -69,6 +81,8 @@ export class GameScene {
     this.excitement = 0;
     this.time = 0;
 
+    this.post = PostPipeline.create(this.renderer, this.scene, this.cameraRig.camera, quality);
+
     this.bindEvents();
     this.resize();
   }
@@ -79,11 +93,21 @@ export class GameScene {
   }
 
   buildLighting() {
-    // Evening floodlit look: cool ambient fill, warm key from above.
-    const hemi = new THREE.HemisphereLight(0x9fc4ff, 0x1d3320, 0.55);
+    // Evening floodlit look.
+    //
+    // The previous rig had hemi 0.55 + fill 0.62 + rim 0.4 + ambient 0.7 sitting
+    // under a key of 2.15. Shadows were being rendered correctly the whole time
+    // and were simply invisible: removing the key still left roughly half the
+    // scene's light, so a shadowed pixel was barely darker than a lit one. That
+    // is what made everything look flat and unlit, not a lack of brightness.
+    //
+    // With the environment map (environment.js) supplying real indirect light,
+    // the constant fills can come almost all the way down and the key can carry
+    // the image — which is what puts a readable shadow under every player.
+    const hemi = new THREE.HemisphereLight(0x9fc4ff, 0x2b4a25, 0.16);
     this.scene.add(hemi);
 
-    const key = new THREE.DirectionalLight(0xfff2dc, 2.15);
+    const key = new THREE.DirectionalLight(0xfff2dc, 3.1);
     key.position.set(38, 62, 30);
     key.castShadow = this.quality !== 'low';
     key.shadow.mapSize.set(GRAPHICS.shadowMapSize, GRAPHICS.shadowMapSize);
@@ -99,16 +123,17 @@ export class GameScene {
     this.scene.add(key);
     this.keyLight = key;
 
-    // Opposing fill so players aren't black on the shadow side.
-    const fill = new THREE.DirectionalLight(0xbcd6ff, 0.62);
+    // Opposing fill so players aren't black on the shadow side — enough to keep
+    // the shadow side readable, not enough to erase the shadow.
+    const fill = new THREE.DirectionalLight(0xbcd6ff, 0.34);
     fill.position.set(-40, 45, -28);
     this.scene.add(fill);
 
-    const rim = new THREE.DirectionalLight(0xffd9a0, 0.4);
-    rim.position.set(0, 22, -60);
+    // Back rim from the far stand. This is the light that separates a player
+    // from the turf behind him at broadcast distance.
+    const rim = new THREE.DirectionalLight(0xffd9a0, 0.55);
+    rim.position.set(0, 26, -60);
     this.scene.add(rim);
-
-    this.scene.add(new THREE.AmbientLight(0x27324a, 0.7));
   }
 
   buildPlayers() {
@@ -195,6 +220,10 @@ export class GameScene {
     const h = canvas.clientHeight || window.innerHeight;
     this.renderer.setSize(w, h, false);
     this.cameraRig.setAspect(w / h);
+    if (this.post) {
+      const size = this.renderer.getDrawingBufferSize(new THREE.Vector2());
+      this.post.setSize(size.x, size.y);
+    }
   }
 
   /**
@@ -260,7 +289,12 @@ export class GameScene {
   }
 
   render() {
-    this.renderer.render(this.scene, this.cameraRig.camera);
+    if (this.post) {
+      this.post.setCamera(this.cameraRig.camera);
+      this.post.render();
+    } else {
+      this.renderer.render(this.scene, this.cameraRig.camera);
+    }
   }
 
   get camera() {
@@ -268,6 +302,9 @@ export class GameScene {
   }
 
   dispose() {
+    if (this.post) this.post.dispose();
+    if (this.disposeEnvironment) this.disposeEnvironment();
+    if (this.skyTexture) this.skyTexture.dispose();
     this.renderer.dispose();
     this.scene.traverse((o) => {
       if (o.geometry) o.geometry.dispose();

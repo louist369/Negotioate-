@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { PITCH, GRAPHICS, HALF_LENGTH, HALF_WIDTH, HALF_GOAL } from '../core/config.js';
-import { makeGrassTexture, makeGrassBump, makeNetTexture } from './textures.js';
+import { makeGrassTexture, makeGrassBump, makeNetTexture, makeTurfMacro } from './textures.js';
 
 /**
  * Pitch construction.
@@ -33,13 +33,54 @@ export function buildPitch(renderer) {
     color: 0xbfd8bf,
   });
 
+  // Two-scale turf: the tiling `grass` map carries blade detail, and a single
+  // pitch-sized macro map carries stripes, floodlight pooling and wear. Two
+  // colour maps at different scales is not something MeshStandardMaterial
+  // exposes, so the second is injected into the compiled shader.
+  const macro = makeTurfMacro(renderer, {
+    length: PITCH.length,
+    width: PITCH.width,
+    margin: PITCH.margin,
+    stripes: GRAPHICS.grassStripeCount,
+  });
+  macro.wrapS = THREE.ClampToEdgeWrapping;
+  macro.wrapT = THREE.ClampToEdgeWrapping;
+  turfMat.userData.macro = { value: macro };
+  turfMat.onBeforeCompile = (shader) => {
+    shader.uniforms.uMacro = turfMat.userData.macro;
+    shader.fragmentShader = shader.fragmentShader
+      .replace(
+        '#include <common>',
+        `#include <common>
+         uniform sampler2D uMacro;
+         varying vec2 vMacroUv;`
+      )
+      .replace(
+        '#include <map_fragment>',
+        `vec3 macro = texture2D(uMacro, vMacroUv).rgb;
+         #include <map_fragment>
+         // R: brightness. Centred on 0.5 so an untouched macro map is a no-op.
+         diffuseColor.rgb *= 0.55 + macro.r * 0.9;`
+      )
+      .replace(
+        '#include <roughnessmap_fragment>',
+        `#include <roughnessmap_fragment>
+         // G: roughness. Stripes leaning away from the camera are glossier.
+         roughnessFactor *= 0.62 + macro.g * 0.62;`
+      );
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', '#include <common>\n varying vec2 vMacroUv;')
+      .replace('#include <uv_vertex>', '#include <uv_vertex>\n vMacroUv = uv;');
+  };
+  // Force a distinct program from any other MeshStandardMaterial in the scene.
+  turfMat.customProgramCacheKey = () => 'pitchcraft-turf';
+
   const turf = new THREE.Mesh(new THREE.PlaneGeometry(fieldW, fieldH, 1, 1), turfMat);
   turf.rotation.x = -Math.PI / 2;
   turf.receiveShadow = true;
   turf.name = 'turf';
   group.add(turf);
 
-  group.add(buildMownStripes());
   group.add(buildMarkings());
 
   const goals = new THREE.Group();
@@ -48,40 +89,6 @@ export function buildPitch(renderer) {
   goals.add(buildGoal(renderer, -1));
   group.add(goals);
 
-  return group;
-}
-
-/**
- * Mown stripes. Alternating bands of very slightly different tint, laid just
- * above the turf. Additive-ish blending keeps them subtle instead of stripy.
- */
-function buildMownStripes() {
-  const group = new THREE.Group();
-  group.name = 'stripes';
-  const count = GRAPHICS.grassStripeCount;
-  const bandW = PITCH.length / count;
-
-  const geo = new THREE.PlaneGeometry(bandW, PITCH.width);
-  const light = new THREE.MeshBasicMaterial({
-    color: 0xffffff,
-    transparent: true,
-    opacity: 0.06,
-    depthWrite: false,
-  });
-  const dark = new THREE.MeshBasicMaterial({
-    color: 0x000000,
-    transparent: true,
-    opacity: 0.06,
-    depthWrite: false,
-  });
-
-  for (let i = 0; i < count; i++) {
-    const m = new THREE.Mesh(geo, i % 2 ? light : dark);
-    m.rotation.x = -Math.PI / 2;
-    m.position.set(-HALF_LENGTH + bandW * (i + 0.5), 0.004, 0);
-    m.renderOrder = 1;
-    group.add(m);
-  }
   return group;
 }
 
@@ -241,8 +248,11 @@ function buildGoal(renderer, side) {
     depthWrite: false,
     roughness: 1,
     color: 0xf2f6fb,
-    emissive: 0x223040,
-    emissiveIntensity: 0.6,
+    // Nylon netting under floodlight is one of the brightest things on a pitch.
+    // With the ambient fill cut back (see scene.js) the old 0.6 left it as a
+    // grey smudge against the crowd behind it.
+    emissive: 0x4a5c74,
+    emissiveIntensity: 1.15,
   });
 
   const setRepeat = (mesh, uPerM, vPerM, w, hh) => {

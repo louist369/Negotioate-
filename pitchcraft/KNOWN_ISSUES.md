@@ -8,11 +8,14 @@ Recorded honestly. Ordered by how much each affects the experience.
 
 ### 1. Characters do not deform — the rig is a jointed mannequin
 Players are built from rigid tapered segments with spheres at the joints
-(`src/render/character.js`). At gameplay distance this reads acceptably, but in
-close-up the limbs are visibly separate solids rather than a continuous body.
+(`src/render/character.js`). The kit now has a sleeve break, a sock line, a
+collar and hem, fabric roughness and a shaped boot, which carries it a long way
+at gameplay distance — but in close-up the limbs are still separate solids
+rather than a continuous body.
 
-This is the largest single gap between Pitchcraft and a commercial football
-game's visuals.
+This is the largest remaining gap between Pitchcraft and a commercial football
+game's visuals, and it is the one place where buying an asset would genuinely
+beat generating one.
 
 **Fix:** replace with a `SkinnedMesh` and a real bone hierarchy. The animation
 layer already drives named joints, so `animation.js` would need almost no
@@ -20,18 +23,21 @@ change — the work is authoring the mesh and skin weights.
 
 ### 2. 60 fps is unverified on real hardware
 This build has only ever run on a software rasteriser (no GPU in the build
-environment), so no meaningful frame-rate figure exists. Draw calls (~350) and
-triangle count (~180k at full quality) are modest, but that is an argument, not
-a measurement.
+environment), so no meaningful frame-rate figure exists. Draw calls (~220) and
+triangle count are modest, but that is an argument, not a measurement — and the
+render path now carries a bloom + grade post chain and an IBL environment that
+it did not before.
 
 **Fix:** run on a real GPU, profile, and adjust `GRAPHICS.crowdDensity` and
-`shadowMapSize`. A `?quality=low|medium|high` switch already exists.
+`shadowMapSize`. A `?quality=low|medium|high` switch already exists, and `low`
+skips the post chain entirely rather than scaling it down.
 
-### 3. No human has played it
-All verification is automated. A scripted bot now drives the real control path
-end to end (`tools/botPlayer.js`), which caught several genuine control defects,
-but a bot is not a player. Nobody has actually held the controls, so some of the
-feel tuning will certainly be wrong.
+### 3. Feel tuning has had exactly one round of human feedback
+All verification is automated, and a scripted bot drives the real control path
+end to end (`tools/botPlayer.js`). One person has now actually played it, which
+produced the two findings that drove cycles 21–30 — both real, both invisible to
+every automated check in the project. Everything about *feel* beyond those two
+is still unvalidated.
 
 ---
 

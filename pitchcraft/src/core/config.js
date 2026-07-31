@@ -7,24 +7,31 @@
  */
 
 export const PITCH = {
-  // 7v7 dimensions. Swap to 105 x 68 for an 11v11 build — everything below derives from these.
-  length: 78,
-  width: 50,
+  // 7v7 on an adult pitch. Swap to 105 x 68 for an 11v11 build — everything
+  // below derives from these. Enlarged from 78x50: seven players on a small
+  // pitch with small goals is exactly the composition of a junior match.
+  length: 88,
+  width: 57,
   // Space beyond the touchline before the stands begin.
   margin: 9,
 
-  goalWidth: 6.8,
-  goalHeight: 2.3,
-  goalDepth: 1.9,
-  postRadius: 0.07,
+  // Regulation goal. Undersized posts are the fastest way to make a pitch read
+  // as youth football: a player should stand about 4.0 goal-widths tall.
+  goalWidth: 7.32,
+  goalHeight: 2.44,
+  goalDepth: 2.0,
+  postRadius: 0.06,
 
-  centreCircleRadius: 7.2,
-  penaltyAreaDepth: 12,
-  penaltyAreaWidth: 26,
-  goalAreaDepth: 5,
-  goalAreaWidth: 13,
+  // Markings are proportioned off the regulation goal rather than off the pitch:
+  // a six-yard box narrower than `goalWidth + 2 * goalAreaDepth` is the single
+  // most obvious "this is a junior pitch" tell, and the old 13m box was.
+  centreCircleRadius: 8.0,
+  penaltyAreaDepth: 13.5,
+  penaltyAreaWidth: 31,
+  goalAreaDepth: 5.5,
+  goalAreaWidth: 18.32,
   cornerArcRadius: 1,
-  penaltySpot: 9,
+  penaltySpot: 10,
   lineWidth: 0.14,
 };
 
@@ -36,9 +43,10 @@ export const BALL = {
   groundStop: 0.55,
   airDrag: 0.06,
   gravity: 9.81,
-  restitution: 0.52,
+  // A match ball bounces to roughly 60-70% of drop height on turf.
+  restitution: 0.7,
   // Fraction of horizontal speed retained on a bounce.
-  bounceFriction: 0.78,
+  bounceFriction: 0.82,
   spinDecay: 0.85,
   // Magnus-style lateral acceleration per unit spin per unit speed.
   magnus: 0.021,
@@ -50,21 +58,27 @@ export const PLAYER = {
   radius: 0.42,
   height: 1.82,
 
-  walkSpeed: 3.0,
-  runSpeed: 6.35,
-  sprintSpeed: 8.45,
+  // Locomotion is set from human athletic data rather than picked for feel.
+  // The previous values (accel 26 m/s^2, decel 34, 774 deg/s standing turn)
+  // put a player at top speed in 0.32s against a real 1.6-2.2s, which is what
+  // made the game read as weightless and childlike. These sit at the brisk end
+  // of the real band — a footballer, not a physics lesson.
+  walkSpeed: 3.2,
+  runSpeed: 7.0,
+  sprintSpeed: 9.7,
   // Speed penalty applied while actively dribbling the ball.
   dribbleSpeedFactor: 0.86,
 
-  accel: 26,
-  sprintAccel: 21,
-  decel: 34,
+  accel: 8.6,
+  sprintAccel: 7.4,
+  decel: 10.5,
   // Extra deceleration applied when input direction opposes velocity.
   reverseBrake: 1.8,
 
-  // Turn rate falls off as speed rises, which is what stops "sliding on ice" feel.
-  turnRateStill: 13.5,
-  turnRateFull: 4.2,
+  // Turn rate falls off as speed rises, which is what stops "sliding on ice"
+  // feel. ~500 deg/s standing down to ~150 deg/s at a full sprint.
+  turnRateStill: 8.7,
+  turnRateFull: 2.6,
 
   staminaMax: 1,
   staminaDrainSprint: 0.085,
@@ -74,18 +88,26 @@ export const PLAYER = {
   staminaRecoverAt: 0.25,
 
   controlRadius: 1.05,
-  // Distance at which a player can first influence a loose ball.
-  reachRadius: 1.5,
+  // Distance at which a player can first influence a loose ball. This is a
+  // stretch — a standing leg extension from the body centre, not an arm's
+  // length — so 1.7m is the honest figure for a 1.82m player.
+  //
+  // It matters more than it looks. Dropping acceleration from 26 m/s^2 to a
+  // human 8.6 cost 12 points of possession outright, because players simply
+  // could not reach loose balls any more and the game turned scrappy. The fix
+  // is not to give the acceleration back: it is to let a player who *does*
+  // arrive actually win the ball, which is what a real footballer does.
+  reachRadius: 1.7,
   // Relative ball speed (m/s) at which control quality falls to zero.
-  controlPace: 27,
+  controlPace: 34,
   // A player can only stretch so far in the time a fast ball gives them.
   // Effective reach shrinks with the ball's relative speed: without this, a
   // defender standing beside the passer simply took every pass off his foot —
   // 73% of "interceptions" happened in the first 10% of the pass.
-  interceptSpeedLimit: 24,
-  minReachFraction: 0.5,
+  interceptSpeedLimit: 30,
+  minReachFraction: 0.75,
   // Ball height (m) at which a player can still bring the ball down.
-  controlHeight: 0.62,
+  controlHeight: 0.85,
   tackleRange: 2.05,
   tackleCooldown: 0.75,
   tackleDuration: 0.42,
@@ -108,8 +130,10 @@ export const KICK = {
   passHeightGain: 0.0,
 
   throughMinSpeed: 12,
-  throughMaxSpeed: 24,
-  throughLead: 7.5,
+  throughMaxSpeed: 25,
+  // Lead distance scales with the pitch: a through ball played 7.5m ahead on an
+  // 88m pitch is a short pass, not a ball in behind.
+  throughLead: 8.5,
 
   loftMinSpeed: 12,
   loftMaxSpeed: 24,
@@ -131,7 +155,7 @@ export const KICK = {
   shotAimManual: 0.6,
   // Cone (radians) inside which the assist looks for a receiver.
   passCone: 1.15,
-  passMaxRange: 34,
+  passMaxRange: 38,
 
   // Random error injected per kick, scaled by pressure and power.
   baseError: 0.012,
@@ -145,18 +169,21 @@ export const KICK = {
 
 export const KEEPER = {
   lineDepth: 1.35,
-  maxAdvance: 8.5,
+  maxAdvance: 9.5,
   // How far across goal the keeper shifts per metre of ball offset.
   angleFactor: 0.34,
   reactionTime: 0.09,
-  diveSpeed: 9.4,
+  diveSpeed: 10.2,
   diveDuration: 0.55,
   diveRecover: 0.7,
-  reach: 2.6,
-  highReach: 2.7,
+  // A regulation goal is 7.7% wider than the one this was tuned against, so the
+  // keeper needs the extra span and the extra base save rate simply to hold the
+  // old save percentage. Without it, conversion ran at 50%.
+  reach: 2.8,
+  highReach: 2.85,
   catchChance: 0.62,
   // Save probability scaling: harder shots and tighter angles are harder to stop.
-  baseSave: 1.02,
+  baseSave: 1.14,
   speedPenalty: 0.011,
   distanceBonus: 0.012,
   rushThreshold: 13,
@@ -169,10 +196,13 @@ export const AI = {
   lineHeightDefend: -0.2,
   compactness: 0.82,
 
-  pressRadius: 14,
+  // Every radius here was calibrated against a 78x50 pitch. They are scaled with
+  // it — a press radius that does not grow with the pitch turns a bigger pitch
+  // into a passive one.
+  pressRadius: 15.5,
   pressersMax: 2,
-  supportRadius: 18,
-  markRadius: 11,
+  supportRadius: 20,
+  markRadius: 12.5,
 
   // Utility weights for pass selection.
   wProgress: 1.0,
@@ -190,11 +220,11 @@ export const AI = {
   pressureRelease: 1.45,
   runTriggerChance: 0.55,
   // Minimum spacing AI teammates try to keep from one another.
-  spacing: 6.5,
+  spacing: 7.3,
   spacingForce: 1.1,
 
-  shootRangeBase: 22,
-  shootConfidence: 0.34,
+  shootRangeBase: 24,
+  shootConfidence: 0.29,
 
   // Pass-type preference. The simple ground pass is the baseline; the ambitious
   // options start negative and have to earn their selection.
@@ -213,7 +243,7 @@ export const AI = {
     passAccuracy: 0.9,
     aggression: 1.0,
     tackleRate: 2.2,
-    shootConfidence: 0.34,
+    shootConfidence: 0.29,
     keeperSkill: 0,
     errorScale: 1,
     speed: 1,
@@ -231,32 +261,32 @@ export const AI = {
  */
 export const DIFFICULTY = {
   easy: {
-    reaction: 0.34,
-    passAccuracy: 0.68,
-    aggression: 0.5,
-    tackleRate: 1.0,
-    shootConfidence: 0.58,
-    keeperSkill: -0.3,
+    reaction: 0.45,
+    passAccuracy: 0.62,
+    aggression: 0.42,
+    tackleRate: 0.8,
+    shootConfidence: 0.52,
+    keeperSkill: -0.75,
     // The levers that actually decide matches: execution precision and pace.
-    errorScale: 2.6,
-    speed: 0.9,
+    errorScale: 4.2,
+    speed: 0.8,
   },
   normal: {
-    reaction: 0.22,
-    passAccuracy: 0.82,
-    aggression: 0.76,
-    tackleRate: 1.6,
-    shootConfidence: 0.44,
-    keeperSkill: -0.1,
-    errorScale: 1.6,
-    speed: 0.96,
+    reaction: 0.3,
+    passAccuracy: 0.74,
+    aggression: 0.62,
+    tackleRate: 1.3,
+    shootConfidence: 0.42,
+    keeperSkill: -0.4,
+    errorScale: 2.5,
+    speed: 0.91,
   },
   hard: {
     reaction: 0.15,
     passAccuracy: 0.92,
     aggression: 1.0,
     tackleRate: 2.2,
-    shootConfidence: 0.34,
+    shootConfidence: 0.29,
     keeperSkill: 0.05,
     errorScale: 1.0,
     speed: 1.0,

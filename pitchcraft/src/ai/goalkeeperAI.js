@@ -228,7 +228,9 @@ export class GoalkeeperAI {
     p -= shot.speed * KEEPER.speedPenalty;
     p -= clamp(absDz / Math.max(coverable, 0.5), 0, 1.4) * 0.42;
     if (high) p -= 0.1;
-    p += (this.difficulty?.keeperSkill ?? 0) * 0.1;
+    // Weighted to matter: at 0.1 the whole easy->hard span moved save
+    // probability by 3.5%, which is indistinguishable from noise.
+    p += (this.difficulty?.keeperSkill ?? 0) * 0.3;
     p = clamp(p, 0.05, 0.97);
 
     const willSave = this.rng.chance(p) && absDz < coverable;

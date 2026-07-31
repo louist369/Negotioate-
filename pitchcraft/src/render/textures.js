@@ -89,6 +89,114 @@ export function makeGrassBump(renderer, size = 512) {
   return finish(c, { repeat: [1, 1], srgb: false, renderer });
 }
 
+/**
+ * Pitch-scale "macro" map: one texel per ~7cm of turf, covering the whole field
+ * exactly once. Sampled alongside the tiling blade texture (see pitch.js), it
+ * carries everything that varies across the pitch rather than within a tile:
+ *
+ *   - mown stripes, as a tint AND a roughness shift. Real stripes are the same
+ *     grass leaning toward or away from you; the light band is the one lying
+ *     away, which is both brighter and glossier. Drawing them as a flat white
+ *     overlay quad — which is what this replaces — gets the tint and misses the
+ *     specular difference entirely, so they read as paint, not grass.
+ *   - floodlight pooling, so the centre of the pitch is brighter than the
+ *     corners and the turf stops being one uniform green.
+ *   - wear: scuffed goalmouths, a worn centre circle, penalty spots.
+ *
+ * Red channel = brightness multiplier, green = roughness multiplier.
+ */
+export function makeTurfMacro(renderer, { length, width, margin, stripes }, size = 1024) {
+  const aspect = (width + margin * 2) / (length + margin * 2);
+  const w = size;
+  const h = Math.round(size * aspect);
+  const c = canvas(w, h);
+  const ctx = c.getContext('2d');
+
+  // Pitch (not field) bounds in pixels, for placing wear and stripes.
+  const padX = (margin / (length + margin * 2)) * w;
+  const padY = (margin / (width + margin * 2)) * h;
+  const pw = w - padX * 2;
+  const ph = h - padY * 2;
+
+  ctx.fillStyle = 'rgb(128,128,0)';
+  ctx.fillRect(0, 0, w, h);
+
+  // --- mown stripes -------------------------------------------------------
+  const bandW = pw / stripes;
+  for (let i = 0; i < stripes; i++) {
+    const away = i % 2 === 0;
+    // Away-leaning bands are lighter and glossier; toward-leaning are darker
+    // and duller. The asymmetry is deliberate — a real mow pattern is not a
+    // symmetric ±x about the mean.
+    const bright = away ? 150 : 108;
+    const rough = away ? 108 : 148;
+    ctx.fillStyle = `rgb(${bright},${rough},0)`;
+    ctx.fillRect(padX + bandW * i, 0, Math.ceil(bandW) + 1, h);
+  }
+  // Run-off outside the touchlines is mown the same way but never played on.
+  ctx.fillStyle = 'rgba(96,140,0,0.55)';
+  ctx.fillRect(0, 0, padX, h);
+  ctx.fillRect(w - padX, 0, padX, h);
+  ctx.fillRect(0, 0, w, padY);
+  ctx.fillRect(0, h - padY, w, padY);
+
+  // --- floodlight pooling -------------------------------------------------
+  // Four banks, one per corner, summed. Screen blending keeps the overlaps from
+  // clipping to white.
+  ctx.globalCompositeOperation = 'screen';
+  for (const fx of [0.2, 0.8]) {
+    for (const fy of [0.2, 0.8]) {
+      const g = ctx.createRadialGradient(fx * w, fy * h, 0, fx * w, fy * h, w * 0.46);
+      g.addColorStop(0, 'rgba(70,0,0,1)');
+      g.addColorStop(0.55, 'rgba(34,0,0,1)');
+      g.addColorStop(1, 'rgba(0,0,0,1)');
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, w, h);
+    }
+  }
+  ctx.globalCompositeOperation = 'source-over';
+
+  // Corners fall away, which is what stops the field reading as a flat sheet.
+  const vig = ctx.createRadialGradient(w / 2, h / 2, Math.min(w, h) * 0.2, w / 2, h / 2, w * 0.62);
+  vig.addColorStop(0, 'rgba(0,0,0,0)');
+  vig.addColorStop(1, 'rgba(0,0,0,0.28)');
+  ctx.fillStyle = vig;
+  ctx.fillRect(0, 0, w, h);
+
+  // --- wear ---------------------------------------------------------------
+  const wear = (cx, cy, rx, ry, amount) => {
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.scale(1, ry / rx);
+    const g = ctx.createRadialGradient(0, 0, 0, 0, 0, rx);
+    g.addColorStop(0, `rgba(190,170,0,${amount})`);
+    g.addColorStop(1, 'rgba(190,170,0,0)');
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.fillStyle = g;
+    ctx.fillRect(-rx, -rx, rx * 2, rx * 2);
+    ctx.restore();
+    ctx.globalCompositeOperation = 'source-over';
+  };
+
+  // Goalmouths take by far the heaviest traffic on any pitch.
+  wear(padX + pw * 0.045, padY + ph * 0.5, pw * 0.055, ph * 0.16, 0.34);
+  wear(padX + pw * 0.955, padY + ph * 0.5, pw * 0.055, ph * 0.16, 0.34);
+  // Penalty spots and the centre circle.
+  wear(padX + pw * 0.115, padY + ph * 0.5, pw * 0.02, ph * 0.035, 0.4);
+  wear(padX + pw * 0.885, padY + ph * 0.5, pw * 0.02, ph * 0.035, 0.4);
+  wear(padX + pw * 0.5, padY + ph * 0.5, pw * 0.045, ph * 0.09, 0.22);
+  // Scattered divots, so the wear does not read as four tidy airbrushed ovals.
+  for (let i = 0; i < 90; i++) {
+    const x = padX + Math.random() * pw;
+    const y = padY + Math.random() * ph;
+    // Concentrated toward the middle third, where the ball actually lives.
+    const bias = 1 - Math.abs((x - padX) / pw - 0.5) * 1.2;
+    wear(x, y, pw * (0.004 + Math.random() * 0.012), ph * 0.02, 0.12 * Math.max(bias, 0.2));
+  }
+
+  return finish(c, { renderer, srgb: false, aniso: 8 });
+}
+
 /** Goal netting: a transparent grid with slight sag baked into the line weight. */
 export function makeNetTexture(renderer, size = 256, cell = 12) {
   const c = canvas(size, size);
@@ -115,38 +223,91 @@ export function makeNetTexture(renderer, size = 256, cell = 12) {
  * Crowd sheet: rows of abstract spectators used on the stand instancing.
  * Deliberately loose — at broadcast distance this reads as a packed stadium.
  */
-export function makeCrowdTexture(renderer, w = 512, h = 256, palette = null) {
+export function makeCrowdTexture(renderer, w = 1024, h = 512, palette = null) {
   const c = canvas(w, h);
   const ctx = c.getContext('2d');
-  ctx.fillStyle = '#12161d';
+
+  // Dark seating deck. Everything below is drawn *over* this, so the gaps
+  // between spectators read as shadow between rows rather than as background.
+  ctx.fillStyle = '#0d1015';
   ctx.fillRect(0, 0, w, h);
 
-  const colors = palette || ['#d8d8d8', '#2b4a8c', '#b7362a', '#e8c65a', '#3d3d45', '#6f4f8f', '#2f7f6a'];
-  const cols = 46;
-  const rows = 18;
+  // A real crowd is dark and desaturated at distance under floodlight. The
+  // previous palette was fully-saturated primaries at equal weight, which is
+  // why the stands read as television static: at 40m every spectator was as
+  // loud as every other, so the eye found no structure to latch onto.
+  //
+  // Instead: a mostly muted mass, with team colours appearing in the minority
+  // and true brights rarer still. That's what gives a stand texture.
+  const muted = ['#3a3c42', '#2d3138', '#4a4136', '#53535a', '#38414d', '#463b3b', '#2a3630'];
+  const team = palette || ['#28407a', '#8c3327', '#1e2a4a', '#6d2c22'];
+  const bright = ['#c9c9c4', '#c8a63f', '#9ab4d8'];
+  const pick = () => {
+    const r = Math.random();
+    if (r < 0.62) return muted[(Math.random() * muted.length) | 0];
+    if (r < 0.9) return team[(Math.random() * team.length) | 0];
+    return bright[(Math.random() * bright.length) | 0];
+  };
+
+  const cols = 78;
+  const rows = 26;
   const cw = w / cols;
   const ch = h / rows;
 
+  // Vertical aisles: real stands are split into blocks, and the gaps are what
+  // stop a crowd texture from tiling as one undifferentiated sheet.
+  const aisles = new Set();
+  for (let i = 6; i < cols; i += 13) aisles.add(i);
+
   for (let r = 0; r < rows; r++) {
+    // Seat rows step back, so each row is drawn on a slightly darker band.
+    const rowShade = 0.72 + (r / rows) * 0.42;
+    ctx.fillStyle = `rgba(0,0,0,${(0.3 - (r / rows) * 0.22).toFixed(3)})`;
+    ctx.fillRect(0, r * ch, w, ch);
+
     for (let i = 0; i < cols; i++) {
-      if (Math.random() < 0.06) continue; // a few empty seats
-      const x = i * cw + cw * 0.5 + (Math.random() - 0.5) * cw * 0.35;
-      const y = r * ch + ch * 0.62;
-      const col = colors[(Math.random() * colors.length) | 0];
-      // Body.
+      if (aisles.has(i)) continue;
+      // Empty seats cluster rather than scatter — one gap is rarely alone.
+      if (Math.random() < 0.1) continue;
+
+      const x = i * cw + cw * 0.5 + (Math.random() - 0.5) * cw * 0.3;
+      const y = r * ch + ch * 0.78;
+      const col = pick();
+
+      // Body: shoulders wider than the waist, so a spectator is not a domino.
       ctx.fillStyle = col;
-      const bw = cw * 0.62;
-      const bh = ch * 0.55;
-      ctx.fillRect(x - bw / 2, y - bh, bw, bh);
-      // Head.
-      ctx.fillStyle = ['#f0c49a', '#c08b5c', '#8a5a30', '#5a3418'][(Math.random() * 4) | 0];
+      ctx.globalAlpha = rowShade;
+      const bw = cw * 0.66;
+      const bh = ch * 0.5;
       ctx.beginPath();
-      ctx.arc(x, y - bh - ch * 0.16, Math.min(cw, ch) * 0.17, 0, Math.PI * 2);
+      ctx.moveTo(x - bw / 2, y);
+      ctx.lineTo(x - bw * 0.42, y - bh);
+      ctx.lineTo(x + bw * 0.42, y - bh);
+      ctx.lineTo(x + bw / 2, y);
+      ctx.closePath();
       ctx.fill();
+
+      ctx.fillStyle = ['#c9a281', '#a8794f', '#7a5030', '#4e3320', '#2f2018'][
+        (Math.random() * 5) | 0
+      ];
+      ctx.beginPath();
+      ctx.arc(x, y - bh - ch * 0.13, Math.min(cw, ch) * 0.19, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = 1;
     }
   }
 
-  noiseOverlay(ctx, w, h, 22);
+  // A scatter of phone screens and lit faces — the only genuinely bright pixels
+  // in the stand, and the thing that sells it as a night crowd once bloom
+  // catches them.
+  for (let i = 0; i < 130; i++) {
+    const x = Math.random() * w;
+    const y = Math.random() * h;
+    ctx.fillStyle = `rgba(190,214,255,${0.35 + Math.random() * 0.4})`;
+    ctx.fillRect(x, y, cw * 0.28, ch * 0.18);
+  }
+
+  noiseOverlay(ctx, w, h, 16);
   return finish(c, { repeat: [1, 1], aniso: 4, renderer });
 }
 
@@ -206,6 +367,86 @@ export function makeNumberTexture(number, fg = '#ffffff', bg = null, size = 128)
   tex.colorSpace = THREE.SRGBColorSpace;
   tex.needsUpdate = true;
   return tex;
+}
+
+/**
+ * Shirt fabric. Wrapped cylindrically around the torso, so U runs around the
+ * chest (0 = front centre) and V runs from hem to shoulder.
+ *
+ * A footballer in a single flat colour is the cheapest thing to render and the
+ * most obviously wrong: real kits have a sleeve break, a collar, a hem band and
+ * a knit that catches light. All four are drawn here rather than modelled, so
+ * they cost one shared texture per team instead of extra geometry per player.
+ */
+export function makeShirtTexture(renderer, colors, { keeper = false, size = 256 } = {}) {
+  const c = canvas(size, size);
+  const ctx = c.getContext('2d');
+  const base = keeper ? colors.keeper : colors.primary;
+  const trim = keeper ? '#f2f2f2' : colors.accent;
+  const dark = keeper ? colors.keeperShorts : colors.secondary;
+
+  ctx.fillStyle = base;
+  ctx.fillRect(0, 0, size, size);
+
+  if (!keeper) {
+    // Two body stripes, offset from centre so the front reads asymmetrically —
+    // symmetric stripes look like a test pattern from the broadcast camera.
+    ctx.fillStyle = dark;
+    ctx.globalAlpha = 0.55;
+    for (const u of [0.13, 0.31, 0.69, 0.87]) {
+      ctx.fillRect(Math.round(u * size), 0, Math.max(2, size * 0.035), size);
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  // Shoulder yoke and collar: the top ~12% of V.
+  ctx.fillStyle = dark;
+  ctx.fillRect(0, 0, size, size * 0.07);
+  ctx.fillStyle = trim;
+  ctx.fillRect(0, size * 0.07, size, size * 0.022);
+
+  // Hem band at the bottom of the shirt.
+  ctx.fillStyle = trim;
+  ctx.fillRect(0, size * 0.955, size, size * 0.045);
+
+  // Knit: fine horizontal weave plus noise. Subtle, but it stops the chest
+  // reading as a flat plastic panel under a specular highlight.
+  ctx.globalAlpha = 0.05;
+  ctx.strokeStyle = '#000';
+  ctx.lineWidth = 1;
+  for (let y = 0; y < size; y += 3) {
+    ctx.beginPath();
+    ctx.moveTo(0, y + 0.5);
+    ctx.lineTo(size, y + 0.5);
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+  noiseOverlay(ctx, size, size, 12);
+
+  return finish(c, { renderer, aniso: 4 });
+}
+
+/**
+ * Roughness map for kit fabric: polyester is glossy where it is stretched over
+ * the chest and duller in the folds. Non-colour data, so no sRGB conversion.
+ */
+export function makeFabricRoughness(renderer, size = 128) {
+  const c = canvas(size, size);
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = '#8a8a8a';
+  ctx.fillRect(0, 0, size, size);
+  for (let i = 0; i < 900; i++) {
+    const x = Math.random() * size;
+    const y = Math.random() * size;
+    const r = 2 + Math.random() * 9;
+    const v = Math.random() < 0.5 ? 130 : 190;
+    const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+    g.addColorStop(0, `rgba(${v},${v},${v},0.5)`);
+    g.addColorStop(1, `rgba(${v},${v},${v},0)`);
+    ctx.fillStyle = g;
+    ctx.fillRect(x - r, y - r, r * 2, r * 2);
+  }
+  return finish(c, { renderer, srgb: false, aniso: 2 });
 }
 
 /** Football panel pattern — classic truncated-icosahedron look, drawn abstractly. */

@@ -140,25 +140,43 @@ edits in the browser console take effect on the **next frame** — no reload.
 Open the console (F12) and try:
 
 ```js
-tune.PLAYER.sprintSpeed        // 8.45  — what is it now?
-tune.PLAYER.sprintSpeed = 9.5  // faster; feel the difference immediately
+tune.PLAYER.sprintSpeed        // 9.7  — what is it now?
+tune.PLAYER.accel = 14         // arcadey; feel the difference immediately
 ```
 
 The knobs most likely to need your hands:
 
 | Feels wrong | Try |
 |---|---|
-| Sluggish to get going | `tune.PLAYER.accel` (26) |
-| Can't turn at speed | `tune.PLAYER.turnRateFull` (4.2) |
-| Turns too sharply / arcadey | lower `tune.PLAYER.turnRateStill` (13.5) |
+| Sluggish to get going | `tune.PLAYER.accel` (8.6) |
+| Can't turn at speed | `tune.PLAYER.turnRateFull` (2.6) |
+| Turns too sharply / arcadey | lower `tune.PLAYER.turnRateStill` (8.7) |
 | Ball too far ahead when sprinting | `tune.PLAYER.controlRadius` (1.05) |
+| Can't win a loose ball | `tune.PLAYER.reachRadius` (1.7) |
 | Shots too weak / too wild | `tune.KICK.shotMinSpeed` / `shotMaxSpeed` (17 / 31) |
 | Charge takes too long | `tune.KICK.maxChargeTime` (1.15) |
 | Aim assist too strong | raise `tune.KICK.shotAimManual` (0.6) toward 1 |
 | Passes over/under hit | `tune.KICK.passMaxSpeed` (21) |
-| AI presses too hard | `tune.DIFFICULTY.normal.tackleRate` (1.6) |
+| AI presses too hard | `tune.DIFFICULTY.normal.tackleRate` (1.3) |
 | Camera too far out | `tune.CAMERA.broadcast.zoomNear` / `zoomFar` (34 / 47) |
 | Camera too twitchy | lower `tune.CAMERA.broadcast.followLag` (3.4) |
+
+Locomotion is deliberately set from human athletic data, not for feel:
+acceleration 8.6 m/s², top sprint 9.7 m/s, ~500 deg/s standing turn falling to
+~150 deg/s at a sprint. A player takes about 1.6s to reach top speed. If that
+reads as sluggish to you rather than as weight, say so — the previous values
+(26 m/s², 0.32s to top speed) were what made the game feel childlike, and the
+right answer is somewhere between the two.
+
+Graphics knobs are live too:
+
+```js
+tune.GRAPHICS.crowdRows            // stand density
+__pitchcraft.scene.post.bloom.strength = 0.8    // more glare
+__pitchcraft.scene.post.grade.uniforms.uVignette.value = 0    // no vignette
+__pitchcraft.scene.scene.environmentIntensity = 1.2           // more indirect
+__pitchcraft.scene.keyLight.intensity = 5                     // harder shadows
+```
 
 Note the values that felt right and send them to me — I'll fold them into
 `src/core/config.js`, which is where all of these live permanently.
