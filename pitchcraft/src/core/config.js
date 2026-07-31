@@ -78,6 +78,12 @@ export const PLAYER = {
   reachRadius: 1.5,
   // Relative ball speed (m/s) at which control quality falls to zero.
   controlPace: 27,
+  // A player can only stretch so far in the time a fast ball gives them.
+  // Effective reach shrinks with the ball's relative speed: without this, a
+  // defender standing beside the passer simply took every pass off his foot —
+  // 73% of "interceptions" happened in the first 10% of the pass.
+  interceptSpeedLimit: 24,
+  minReachFraction: 0.5,
   // Ball height (m) at which a player can still bring the ball down.
   controlHeight: 0.62,
   tackleRange: 2.05,

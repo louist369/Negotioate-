@@ -258,7 +258,14 @@ export class World {
           : ball.pos.y < 1.55 || (ball.pos.y < 2.1 && d < 1.0);
         if (!heightOk) continue;
 
-        const reach = p.state === PlayerState.DIVE ? 1.9 : PLAYER.reachRadius;
+        // Reach shrinks with how fast the ball is moving relative to the
+        // player: you cannot reach as far for a ball that is past you in a
+        // blink. Keepers are exempt — reacting to fast balls is their job.
+        const relSpeed = Math.hypot(ball.vel.x - p.vel.x, ball.vel.z - p.vel.z, ball.vel.y);
+        const reachScale = p.isKeeper
+          ? 1
+          : clamp(1 - relSpeed / PLAYER.interceptSpeedLimit, PLAYER.minReachFraction, 1);
+        const reach = (p.state === PlayerState.DIVE ? 1.9 : PLAYER.reachRadius) * reachScale;
         if (d > reach) continue;
 
         // Closer + better control attribute + facing the ball wins the touch.
