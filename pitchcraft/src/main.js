@@ -5,7 +5,9 @@ import { PlayerController } from './control/playerController.js';
 import { AudioEngine } from './audio/audio.js';
 import { HUD } from './ui/hud.js';
 import { PerfMonitor } from './core/perf.js';
-import { SIM } from './core/config.js';
+import * as CONFIG from './core/config.js';
+
+const { SIM } = CONFIG;
 import { EV } from './core/events.js';
 
 /**
@@ -76,8 +78,12 @@ class App {
 
     if (this.loading) this.loading.remove();
 
-    // Expose for the automated browser tests and screenshot tooling.
+    // Expose for the automated browser tests, screenshot tooling — and for
+    // play-testing. Every tuning constant is live-editable from the console:
+    // the simulation reads these values each tick, so a change takes effect on
+    // the next frame with no reload. See PLAYTEST.md.
     window.__pitchcraft = this;
+    window.tune = CONFIG;
   }
 
   bindGlobal() {

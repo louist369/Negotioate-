@@ -40,6 +40,12 @@ screen, or with `?difficulty=easy`. It scales the **opponent** only: pace,
 execution precision, pressing, willingness to shoot and keeper quality. Your own
 AI team-mates always play at full strength.
 
+**Start on `easy`** — `normal` is a genuine challenge and you'll spend your first
+match losing rather than learning the controls.
+
+Play-testing? See [`PLAYTEST.md`](PLAYTEST.md): what to look for, and how to tune
+the game live from the browser console while you play.
+
 ---
 
 ## Controls
@@ -160,6 +166,7 @@ derives from it.
 
 ### Documentation
 
+- [`PLAYTEST.md`](PLAYTEST.md) — how to play-test, what to look for, live tuning
 - [`PLAN.md`](PLAN.md) — architecture, scope, risk register
 - [`DESIGN_DECISIONS.md`](DESIGN_DECISIONS.md) — decisions and the measurements behind them
 - [`CYCLES.md`](CYCLES.md) — the 20 review cycles, what each found, and one fix that was rejected
